@@ -104,3 +104,11 @@ Playlist entries are handled as individual songs, not as tracks belonging to one
 - Integrate the painting through layered warm translucent gradients, preserving text contrast and the clarity of album artwork.
 - Carry the same translucent paper treatment through the sidebar, title area, search field, queue editor, and activity surface.
 - Bundle the artwork in the native macOS app so it is available without relying on the original Desktop file path.
+
+## Desktop 0.1.11
+
+- Restore the autumn landscape's natural pigment and tonal range by removing the stacked screen-wide warm-grey veils.
+- Keep only restrained edge transitions; rely on light, localized translucent surfaces for control and text legibility.
+- Add persistent interface-language selection: System, Simplified Chinese, and English.
+- Localize navigation, discovery, search types, queue actions and states, activity controls, storefront settings, and accessibility labels.
+- Preserve canonical persisted queue-state values so existing queues remain compatible across languages.
