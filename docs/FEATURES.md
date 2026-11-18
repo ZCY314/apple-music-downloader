@@ -112,3 +112,10 @@ Playlist entries are handled as individual songs, not as tracks belonging to one
 - Add persistent interface-language selection: System, Simplified Chinese, and English.
 - Localize navigation, discovery, search types, queue actions and states, activity controls, storefront settings, and accessibility labels.
 - Preserve canonical persisted queue-state values so existing queues remain compatible across languages.
+
+## Desktop 0.1.12
+
+- Rebuild sidebar navigation as full-width, hit-testable controls with explicit content shapes and accessible labels.
+- Remove the detached opaque sidebar treatment; use native macOS material so the navigation sits naturally over the bundled painting.
+- Add System, Light and Dark appearance preferences, defaulting to macOS System appearance.
+- Adapt primary text, secondary text, selected navigation, controls and workspace surfaces to the active color scheme while preserving the painting's color.

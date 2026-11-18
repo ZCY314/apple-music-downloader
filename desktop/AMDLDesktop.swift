@@ -4,11 +4,21 @@ import Darwin
 
 @main
 struct AMDLDesktopApp: App {
+    @AppStorage("amdl.appearance") private var appearance = "system"
+
+    private var preferredScheme: ColorScheme? {
+        switch appearance {
+        case "light": return .light
+        case "dark": return .dark
+        default: return nil
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             MainView()
                 .frame(minWidth: 980, minHeight: 680)
-                .preferredColorScheme(.light)
+                .preferredColorScheme(preferredScheme)
         }
         .windowStyle(.titleBar)
     }
@@ -53,6 +63,8 @@ struct QueueJob: Codable, Identifiable, Equatable {
 }
 
 struct MainView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage("amdl.appearance") private var appearance = "system"
     @State private var page: AppPage = .discover
     @State private var searchText = ""
     @State private var searchType = "album"
@@ -78,10 +90,14 @@ struct MainView: View {
     @State private var configPath = NSHomeDirectory() + "/Music/AppleMusic/config.yaml"
     @State private var workspaceArtwork: NSImage?
 
-    private let ink = Color(hex: 0x20211F)
-    private let paper = Color(hex: 0xF6F6F2)
-    private let muted = Color(hex: 0x777A75)
-    private let accent = Color(hex: 0xA85B48)
+    private var isDark: Bool { colorScheme == .dark }
+    private var ink: Color { isDark ? Color(hex: 0xF0EDE5) : Color(hex: 0x20211F) }
+    private var paper: Color { isDark ? Color(hex: 0x252622) : Color(hex: 0xF6F6F2) }
+    private var muted: Color { isDark ? Color(hex: 0xB6B4AC) : Color(hex: 0x777A75) }
+    private var accent: Color { isDark ? Color(hex: 0xD18A72) : Color(hex: 0xA85B48) }
+    private var surface: Color { isDark ? Color(hex: 0x20211F).opacity(0.72) : Color(hex: 0xF8F6F0).opacity(0.42) }
+    private var selectedSurface: Color { isDark ? Color(hex: 0xF0EDE5).opacity(0.14) : Color(hex: 0xE8E9E3).opacity(0.78) }
+    private var panelSurface: Color { isDark ? Color(hex: 0x171815).opacity(0.62) : Color(hex: 0xFBF9F3).opacity(0.36) }
     private let columns = [GridItem(.adaptive(minimum: 156, maximum: 220), spacing: 28, alignment: .top)]
 
     private var useEnglish: Bool {
@@ -147,10 +163,10 @@ struct MainView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            sidebar
-            ZStack {
-                artworkBackdrop
+        ZStack {
+            artworkBackdrop
+            HStack(spacing: 0) {
+                sidebar
                 VStack(spacing: 0) {
                     topBar
                     Group {
@@ -165,7 +181,7 @@ struct MainView: View {
                 }
             }
         }
-        .background(Color(hex: 0xF6F3EB))
+        .background(isDark ? Color(hex: 0x171815) : Color(hex: 0xF6F3EB))
         .animation(.easeInOut(duration: 0.18), value: page)
         .onChange(of: searchType) { _ in results.removeAll(); selectedIDs.removeAll(); searchMessage = "" }
         .onChange(of: queueURLs) { newValue in savedQueue = newValue.joined(separator: "\n") }
@@ -215,16 +231,16 @@ struct MainView: View {
                 // local translucent surfaces, not a screen-wide grey veil.
                 LinearGradient(
                     stops: [
-                        .init(color: Color(hex: 0xF8F3E8).opacity(0.20), location: 0.0),
+                        .init(color: (isDark ? Color.black : Color(hex: 0xF8F3E8)).opacity(isDark ? 0.20 : 0.20), location: 0.0),
                         .init(color: Color.clear, location: 0.22),
                         .init(color: Color.clear, location: 0.76),
-                        .init(color: Color(hex: 0xF8F3E8).opacity(0.12), location: 1.0)
+                        .init(color: (isDark ? Color.black : Color(hex: 0xF8F3E8)).opacity(isDark ? 0.28 : 0.12), location: 1.0)
                     ],
                     startPoint: .top,
                     endPoint: .bottom
                 )
                 LinearGradient(
-                    colors: [Color(hex: 0xF8F3E8).opacity(0.10), .clear, .clear],
+                    colors: [(isDark ? Color.black : Color(hex: 0xF8F3E8)).opacity(0.10), .clear, .clear],
                     startPoint: .leading,
                     endPoint: .trailing
                 )
@@ -235,45 +251,56 @@ struct MainView: View {
         .ignoresSafeArea()
     }
 
+    private func sidebarButton(for item: AppPage) -> some View {
+        let isSelected = page == item
+        return Button {
+            withAnimation(.easeInOut(duration: 0.16)) { page = item }
+        } label: {
+            HStack(spacing: 13) {
+                Image(systemName: item.symbol)
+                    .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
+                    .frame(width: 20)
+                Text(pageTitle(item))
+                    .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
+                Spacer(minLength: 4)
+                if item == .queue && unfinishedJobCount > 0 {
+                    Text("\(unfinishedJobCount)")
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundStyle(muted)
+                }
+            }
+            .foregroundStyle(isSelected ? ink : muted)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .background(isSelected ? selectedSurface : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .contentShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+        .accessibilityLabel(pageTitle(item))
+    }
+
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                ZStack {
-                    Image(systemName: "waveform").font(.system(size: 21, weight: .regular)).foregroundStyle(ink)
-                }
-                Text("AMDL").font(.system(size: 17, weight: .semibold, design: .default)).tracking(0.8).foregroundStyle(ink)
+                Image(systemName: "waveform").font(.system(size: 21)).foregroundStyle(ink)
+                Text("AMDL").font(.system(size: 17, weight: .semibold)).tracking(0.8).foregroundStyle(ink)
             }
-            .padding(.horizontal, 24).padding(.top, 34).padding(.bottom, 42)
-
-            VStack(spacing: 6) {
+            .padding(.horizontal, 22).padding(.top, 34).padding(.bottom, 38)
+            VStack(spacing: 5) {
                 ForEach(AppPage.allCases, id: \.self) { item in
-                    Button {
-                        page = item
-                    } label: {
-                        HStack(spacing: 13) {
-                            Image(systemName: item.symbol).font(.system(size: 15, weight: .medium)).frame(width: 20)
-                            Text(pageTitle(item)).font(.system(size: 13, weight: page == item ? .semibold : .medium))
-                            Spacer()
-                            if item == .queue && unfinishedJobCount > 0 {
-                                Text("\(unfinishedJobCount)")
-                                    .font(.system(size: 10, weight: .medium, design: .monospaced))
-                                    .foregroundStyle(muted)
-                            }
-                        }
-                        .foregroundStyle(page == item ? ink : muted)
-                        .padding(.horizontal, 11).frame(height: 42)
-                        .background(page == item ? Color(hex: 0xE8E9E3) : Color.clear)
-                        .clipShape(RoundedRectangle(cornerRadius: 7))
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.horizontal, 13)
+                    sidebarButton(for: item)
                 }
             }
-            Spacer()
+            .padding(.horizontal, 12)
+            Spacer(minLength: 0)
         }
-        .frame(width: 194)
-        .background(.regularMaterial.opacity(0.24))
-        .overlay(alignment: .trailing) { Rectangle().fill(ink.opacity(0.08)).frame(width: 1) }
+        .frame(width: 202).frame(maxHeight: .infinity, alignment: .topLeading)
+        .background(.regularMaterial)
+        .overlay(alignment: .trailing) { Rectangle().fill(ink.opacity(0.10)).frame(width: 1) }
+        .zIndex(2)
     }
 
     private var topBar: some View {
@@ -289,7 +316,7 @@ struct MainView: View {
         .padding(.horizontal, 38).padding(.top, 30).padding(.bottom, 22)
         .background(
             LinearGradient(
-                colors: [Color(hex: 0xF8F3E8).opacity(0.16), Color(hex: 0xF8F3E8).opacity(0.035)],
+                colors: [(isDark ? Color.black : Color(hex: 0xF8F3E8)).opacity(0.16), (isDark ? Color.black : Color(hex: 0xF8F3E8)).opacity(0.035)],
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -311,7 +338,7 @@ struct MainView: View {
                     }
                 }
                 .padding(.horizontal, 14).frame(height: 44)
-                .background(Color(hex: 0xF8F6F0).opacity(0.42)).clipShape(RoundedRectangle(cornerRadius: 8))
+                .background(surface).clipShape(RoundedRectangle(cornerRadius: 8))
                 Picker(tr("类型", "Type"), selection: $searchType) {
                     Text(tr("专辑", "Albums")).tag("album")
                     Text(tr("歌曲", "Songs")).tag("song")
@@ -399,7 +426,7 @@ struct MainView: View {
                     AsyncImage(url: item.imageURL) { image in
                         image.resizable().aspectRatio(contentMode: .fill)
                     } placeholder: {
-                        Rectangle().fill(Color(hex: 0xE8E9E3))
+                        Rectangle().fill(selectedSurface)
                             .overlay(Image(systemName: "waveform").font(.system(size: 24, weight: .ultraLight)).foregroundStyle(muted.opacity(0.55)))
                     }
                     .aspectRatio(1, contentMode: .fit)
@@ -461,7 +488,7 @@ struct MainView: View {
                 .font(.system(size: 12, design: .monospaced))
                 .scrollContentBackground(.hidden)
                 .padding(10).frame(height: 110)
-                .background(Color(hex: 0xFBF9F3).opacity(0.36)).clipShape(RoundedRectangle(cornerRadius: 12))
+                .background(panelSurface).clipShape(RoundedRectangle(cornerRadius: 12))
                 .overlay(alignment: .topLeading) {
                     if pastedLinks.isEmpty {
                         Text(tr("粘贴 Apple Music 链接，每行一个……", "Paste Apple Music links, one per line…"))
@@ -512,7 +539,7 @@ struct MainView: View {
                             }
                             Button { removeJob(job.id) } label: { Image(systemName: "xmark").foregroundStyle(muted) }
                                 .buttonStyle(.plain).accessibilityLabel(tr("移除任务", "Remove task"))
-                        }.listRowBackground(Color(hex: 0xFBF9F3).opacity(0.28))
+                        }.listRowBackground(panelSurface.opacity(0.78))
                     }
                 }.listStyle(.plain).scrollContentBackground(.hidden)
             }
@@ -558,7 +585,7 @@ struct MainView: View {
                     .foregroundStyle(ink.opacity(0.85))
                     .frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled).padding(18)
             }
-            .background(Color(hex: 0xFBF9F3).opacity(0.34)).clipShape(RoundedRectangle(cornerRadius: 14))
+            .background(panelSurface).clipShape(RoundedRectangle(cornerRadius: 14))
             if !historyJobs.isEmpty {
                 Text(tr("最近完成", "Recently Completed") + " · \(historyJobs.count)").font(.system(size: 15, weight: .medium)).foregroundStyle(ink)
                 ForEach(historyJobs.prefix(8)) { job in
@@ -580,6 +607,19 @@ struct MainView: View {
 
     private var settingsPage: some View {
         VStack(alignment: .leading, spacing: 22) {
+            HStack {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(tr("外观", "Appearance")).font(.system(size: 13, weight: .semibold)).foregroundStyle(ink)
+                    Text(tr("默认跟随 macOS 外观，也可手动选择。", "Follow macOS appearance by default, or choose manually.")).font(.system(size: 10)).foregroundStyle(muted)
+                }
+                Spacer()
+                Picker(tr("外观", "Appearance"), selection: $appearance) {
+                    Text(tr("跟随系统", "System")).tag("system")
+                    Text(tr("浅色", "Light")).tag("light")
+                    Text(tr("深色", "Dark")).tag("dark")
+                }.pickerStyle(.segmented).frame(width: 270)
+            }
+            Divider()
             HStack {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(tr("界面语言", "Interface Language")).font(.system(size: 13, weight: .semibold)).foregroundStyle(ink)
