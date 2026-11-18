@@ -97,3 +97,10 @@ Playlist entries are handled as individual songs, not as tracks belonging to one
 - Drain catalog-search output streams concurrently to prevent a full stderr pipe from stalling search.
 - Bound the in-memory activity log and keep search, queue, and activity typography consistent.
 - Improve empty-result feedback and VoiceOver labels for selection, clearing search, and removing jobs.
+
+## Desktop 0.1.10
+
+- Restore the supplied Hongwu autumn landscape as the full-window workspace artwork.
+- Integrate the painting through layered warm translucent gradients, preserving text contrast and the clarity of album artwork.
+- Carry the same translucent paper treatment through the sidebar, title area, search field, queue editor, and activity surface.
+- Bundle the artwork in the native macOS app so it is available without relying on the original Desktop file path.

@@ -118,7 +118,7 @@ struct MainView: View {
         HStack(spacing: 0) {
             sidebar
             ZStack {
-                paper
+                artworkBackdrop
                 VStack(spacing: 0) {
                     topBar
                     Group {
@@ -133,7 +133,7 @@ struct MainView: View {
                 }
             }
         }
-        .background(paper)
+        .background(Color(hex: 0xF6F3EB))
         .animation(.easeInOut(duration: 0.18), value: page)
         .onChange(of: searchType) { _ in results.removeAll(); selectedIDs.removeAll(); searchMessage = "" }
         .onChange(of: queueURLs) { newValue in savedQueue = newValue.joined(separator: "\n") }
@@ -158,6 +158,54 @@ struct MainView: View {
                 activity = "尚未找到配置文件。首次运行时，请先检查 ~/Music/AppleMusic/config.yaml。"
             }
         }
+    }
+
+    private var artworkBackdrop: some View {
+        GeometryReader { geometry in
+            ZStack {
+                Image("AutumnLandscape")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
+
+                // A warm paper veil keeps the painting present without competing
+                // with catalog artwork, labels, or controls.
+                Color(hex: 0xF7F3E9).opacity(0.24)
+
+                LinearGradient(
+                    stops: [
+                        .init(color: Color(hex: 0xFBF8F0).opacity(0.76), location: 0.0),
+                        .init(color: Color(hex: 0xF8F5EC).opacity(0.54), location: 0.28),
+                        .init(color: Color(hex: 0xF6F3EA).opacity(0.34), location: 0.68),
+                        .init(color: Color(hex: 0xF7F3E9).opacity(0.58), location: 1.0)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                LinearGradient(
+                    stops: [
+                        .init(color: Color(hex: 0xF8F5ED).opacity(0.48), location: 0.0),
+                        .init(color: Color(hex: 0xF8F5ED).opacity(0.12), location: 0.34),
+                        .init(color: Color(hex: 0xF8F5ED).opacity(0.08), location: 0.72),
+                        .init(color: Color(hex: 0xF8F5ED).opacity(0.38), location: 1.0)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+
+                RadialGradient(
+                    colors: [Color.clear, Color(hex: 0x40382D).opacity(0.075)],
+                    center: .center,
+                    startRadius: min(geometry.size.width, geometry.size.height) * 0.22,
+                    endRadius: max(geometry.size.width, geometry.size.height) * 0.78
+                )
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+        }
+        .accessibilityHidden(true)
+        .ignoresSafeArea()
     }
 
     private var sidebar: some View {
@@ -197,7 +245,7 @@ struct MainView: View {
             Spacer()
         }
         .frame(width: 194)
-        .background(paper)
+        .background(Color(hex: 0xF6F3EB).opacity(0.48))
         .overlay(alignment: .trailing) { Rectangle().fill(ink.opacity(0.08)).frame(width: 1) }
     }
 
@@ -212,7 +260,13 @@ struct MainView: View {
             }
         }
         .padding(.horizontal, 38).padding(.top, 30).padding(.bottom, 22)
-        .background(paper)
+        .background(
+            LinearGradient(
+                colors: [Color(hex: 0xF8F5ED).opacity(0.58), Color(hex: 0xF8F5ED).opacity(0.22)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
     }
 
     private var discoverPage: some View {
@@ -230,7 +284,7 @@ struct MainView: View {
                     }
                 }
                 .padding(.horizontal, 14).frame(height: 44)
-                .background(Color(hex: 0xECEDE7)).clipShape(RoundedRectangle(cornerRadius: 8))
+                .background(Color(hex: 0xF8F6F0).opacity(0.66)).clipShape(RoundedRectangle(cornerRadius: 8))
                 Picker("类型", selection: $searchType) {
                     Text("专辑").tag("album")
                     Text("歌曲").tag("song")
@@ -380,7 +434,7 @@ struct MainView: View {
                 .font(.system(size: 12, design: .monospaced))
                 .scrollContentBackground(.hidden)
                 .padding(10).frame(height: 110)
-                .background(.white.opacity(0.85)).clipShape(RoundedRectangle(cornerRadius: 12))
+                .background(Color(hex: 0xFBF9F3).opacity(0.62)).clipShape(RoundedRectangle(cornerRadius: 12))
                 .overlay(alignment: .topLeading) {
                     if pastedLinks.isEmpty {
                         Text("粘贴 Apple Music 链接，每行一个……")
@@ -431,7 +485,7 @@ struct MainView: View {
                             }
                             Button { removeJob(job.id) } label: { Image(systemName: "xmark").foregroundStyle(muted) }
                                 .buttonStyle(.plain).accessibilityLabel("移除任务")
-                        }.listRowBackground(Color.white.opacity(0.44))
+                        }.listRowBackground(Color(hex: 0xFBF9F3).opacity(0.42))
                     }
                 }.listStyle(.plain).scrollContentBackground(.hidden)
             }
@@ -477,7 +531,7 @@ struct MainView: View {
                     .foregroundStyle(ink.opacity(0.85))
                     .frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled).padding(18)
             }
-            .background(.white.opacity(0.8)).clipShape(RoundedRectangle(cornerRadius: 14))
+            .background(Color(hex: 0xFBF9F3).opacity(0.58)).clipShape(RoundedRectangle(cornerRadius: 14))
             if !historyJobs.isEmpty {
                 Text("最近完成 · \(historyJobs.count)").font(.system(size: 15, weight: .medium)).foregroundStyle(ink)
                 ForEach(historyJobs.prefix(8)) { job in
