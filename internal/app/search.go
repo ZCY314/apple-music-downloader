@@ -1,9 +1,9 @@
 package app
 
 import (
+	"amdl/internal/amp-api"
 	"fmt"
 	"github.com/AlecAivazis/survey/v2"
-	"amdl/internal/amp-api"
 	"strings"
 )
 
@@ -79,11 +79,11 @@ func (r *Runner) promptForQuality(item SearchResultItem, token string) (string, 
 
 // handleSearch manages the entire interactive search process.
 
-func (r *Runner) handleSearch(searchType string, queryParts []string, token string) (string, error) {
+func (r *Runner) handleSearch(searchType string, queryParts []string, token string) ([]string, error) {
 	query := strings.Join(queryParts, " ")
 	validTypes := map[string]bool{"album": true, "song": true, "artist": true}
 	if !validTypes[searchType] {
-		return "", fmt.Errorf("invalid search type: %s. Use 'album', 'song', or 'artist'", searchType)
+		return nil, fmt.Errorf("invalid search type: %s. Use 'album', 'song', or 'artist'", searchType)
 	}
 
 	fmt.Printf("Searching for %ss: \"%s\" in storefront \"%s\"\n", searchType, query, r.Config.General.Storefront)
@@ -93,10 +93,12 @@ func (r *Runner) handleSearch(searchType string, queryParts []string, token stri
 
 	apiSearchType := searchType + "s"
 
+	var selectedURLs []string
+
 	for {
 		searchResp, err := ampapi.Search(r.Config.General.Storefront, query, apiSearchType, r.Config.General.Language, token, limit, offset)
 		if err != nil {
-			return "", fmt.Errorf("error fetching search results: %w", err)
+			return nil, fmt.Errorf("error fetching search results: %w", err)
 		}
 
 		var items []SearchResultItem
@@ -152,12 +154,77 @@ func (r *Runner) handleSearch(searchType string, queryParts []string, token stri
 
 		if len(items) == 0 && offset == 0 {
 			fmt.Println("No results found.")
-			return "", nil
+			return nil, nil
 		}
 
 		// Add next page option if applicable
 		if hasNext {
 			displayOptions = append(displayOptions, nextPageOpt)
+		}
+
+		if r.Flags.Select {
+			const finishOpt = "✓  Finish selection"
+			multiOptions := append([]string(nil), displayOptions...)
+			multiOptions = append(multiOptions, finishOpt)
+
+			prompt := &survey.MultiSelect{
+				Message:  "Select one or more search results (Space to toggle, Enter to confirm; choose Finish selection when done):",
+				Options:  multiOptions,
+				PageSize: limit,
+			}
+			var selectedIndices []int
+			if err := survey.AskOne(prompt, &selectedIndices); err != nil {
+				return nil, nil
+			}
+
+			goToNext, goToPrev, finish := false, false, false
+			prevOffset := 0
+			if offset > 0 {
+				prevOffset = 1
+			}
+			for _, idx := range selectedIndices {
+				option := multiOptions[idx]
+				switch option {
+				case nextPageOpt:
+					goToNext = true
+				case prevPageOpt:
+					goToPrev = true
+				case finishOpt:
+					finish = true
+				default:
+					itemIndex := idx - prevOffset
+					if itemIndex >= 0 && itemIndex < len(items) {
+						selectedURL := items[itemIndex].URL
+						alreadySelected := false
+						for _, existingURL := range selectedURLs {
+							if existingURL == selectedURL {
+								alreadySelected = true
+								break
+							}
+						}
+						if !alreadySelected {
+							selectedURLs = append(selectedURLs, selectedURL)
+						}
+					}
+				}
+			}
+
+			if finish {
+				break
+			}
+			if goToNext {
+				offset += limit
+				continue
+			}
+			if goToPrev {
+				offset -= limit
+				if offset < 0 {
+					offset = 0
+				}
+				continue
+			}
+			// No navigation option selected: the current page selection is complete.
+			break
 		}
 
 		prompt := &survey.Select{
@@ -170,7 +237,7 @@ func (r *Runner) handleSearch(searchType string, queryParts []string, token stri
 		err = survey.AskOne(prompt, &selectedIndex)
 		if err != nil {
 			// User pressed Ctrl+C
-			return "", nil
+			return nil, nil
 		}
 
 		selectedOption := displayOptions[selectedIndex]
@@ -195,19 +262,39 @@ func (r *Runner) handleSearch(searchType string, queryParts []string, token stri
 
 		quality, err := r.promptForQuality(selectedItem, token)
 		if err != nil {
-			return "", fmt.Errorf("could not process quality selection: %w", err)
+			return nil, fmt.Errorf("could not process quality selection: %w", err)
 		}
 		if quality == "" { // User cancelled quality selection
 			fmt.Println("Selection cancelled.")
-			return "", nil
+			return nil, nil
 		}
 
 		if quality != "default" {
 			r.setDlFlags(quality)
 		}
 
-		return selectedItem.URL, nil
+		return []string{selectedItem.URL}, nil
 	}
+
+	if len(selectedURLs) == 0 {
+		return nil, nil
+	}
+
+	// Use one quality choice for the selected search results so the batch has
+	// consistent codec settings. --select remains enabled for album track picking.
+	selectedItem := SearchResultItem{Type: strings.ToUpper(searchType[:1]) + searchType[1:], Name: query}
+	quality, err := r.promptForQuality(selectedItem, token)
+	if err != nil {
+		return nil, fmt.Errorf("could not process quality selection: %w", err)
+	}
+	if quality == "" {
+		fmt.Println("Selection cancelled.")
+		return nil, nil
+	}
+	if quality != "default" {
+		r.setDlFlags(quality)
+	}
+	return selectedURLs, nil
 }
 
 // END: New functions for search functionality

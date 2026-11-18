@@ -51,7 +51,7 @@ func Main() {
 	pflag.Usage = func() {
 		prog := progName()
 		fmt.Fprintf(os.Stderr, "Usage: %s [options] [url1 url2 ...]\n", prog)
-		fmt.Fprintf(os.Stderr, "Search Usage: %s --search [album|song|artist] [query]\n", prog)
+		fmt.Fprintf(os.Stderr, "Search Usage: %s --search [album|song|artist] [query] [--select]\n", prog)
 		fmt.Println("\nOptions:")
 		pflag.PrintDefaults()
 	}
@@ -130,8 +130,8 @@ func Main() {
 
 	args := pflag.Args()
 
-	// In album search batch mode, --select chooses albums; download all tracks
-	// from each selected album without prompting for track numbers again.
+	// In album search batch mode, --select chooses albums; each chosen album
+	// should download all tracks without prompting again for track numbers.
 	r.Flags.BatchSelectAll = r.Flags.Select && search_type == "album"
 
 	if search_type != "" {
@@ -140,16 +140,16 @@ func Main() {
 			pflag.Usage()
 			return
 		}
-		selectedUrl, err := r.handleSearch(search_type, args, token)
+		selectedURLs, err := r.handleSearch(search_type, args, token)
 		if err != nil {
 			fmt.Printf("\nSearch process failed: %v\n", err)
 			return
 		}
-		if selectedUrl == "" {
+		if len(selectedURLs) == 0 {
 			fmt.Println("\nExiting.")
 			return
 		}
-		os.Args = []string{selectedUrl}
+		os.Args = selectedURLs
 	} else {
 		if len(args) == 0 {
 			fmt.Println("No URLs provided. Please provide at least one URL.")
@@ -159,30 +159,50 @@ func Main() {
 		os.Args = args
 	}
 
-	if strings.Contains(os.Args[0], "/artist/") {
-		urlArtistName, urlArtistID, err := r.getUrlArtistName(os.Args[0], token)
-		if err != nil {
-			fmt.Println("Failed to get artistname.")
-			return
+	// Expand every selected artist URL, not only the first one. This matters
+	// when --select is used with an artist search.
+	artistFolderTemplate := r.Config.Paths.ArtistFolder
+	var expandedArgs []string
+	artistFolderByURL := make(map[string]string)
+	for _, targetURL := range os.Args {
+		if !strings.Contains(targetURL, "/artist/") {
+			expandedArgs = append(expandedArgs, targetURL)
+			continue
 		}
-		r.Config.Paths.ArtistFolder = strings.NewReplacer(
+
+		urlArtistName, urlArtistID, err := r.getUrlArtistName(targetURL, token)
+		if err != nil {
+			fmt.Printf("Failed to get artistname for %s.\n", targetURL)
+			continue
+		}
+		artistFolder := strings.NewReplacer(
 			"{UrlArtistName}", r.LimitString(urlArtistName),
 			"{ArtistId}", urlArtistID,
-		).Replace(r.Config.Paths.ArtistFolder)
-		albumArgs, err := r.checkArtist(os.Args[0], token, "albums")
+		).Replace(artistFolderTemplate)
+		r.Config.Paths.ArtistFolder = artistFolder
+
+		albumArgs, err := r.checkArtist(targetURL, token, "albums")
 		if err != nil {
-			fmt.Println("Failed to get artist albums.")
-			return
+			fmt.Printf("Failed to get artist albums for %s.\n", urlArtistName)
+			continue
 		}
-		mvArgs, err := r.checkArtist(os.Args[0], token, "music-videos")
+		mvArgs, err := r.checkArtist(targetURL, token, "music-videos")
 		if err != nil {
-			fmt.Println("Failed to get artist music-videos.")
+			fmt.Printf("Failed to get artist music-videos for %s.\n", urlArtistName)
 		}
-		os.Args = append(albumArgs, mvArgs...)
+		expandedArgs = append(expandedArgs, albumArgs...)
+		expandedArgs = append(expandedArgs, mvArgs...)
+		for _, artistURL := range append(albumArgs, mvArgs...) {
+			artistFolderByURL[artistURL] = artistFolder
+		}
 	}
+	os.Args = expandedArgs
 	albumTotal := len(os.Args)
 	for {
 		for albumNum, urlRaw := range os.Args {
+			if artistFolder, ok := artistFolderByURL[urlRaw]; ok {
+				r.Config.Paths.ArtistFolder = artistFolder
+			}
 			fmt.Printf("Queue %d of %d: ", albumNum+1, albumTotal)
 			var storefront, albumId string
 
