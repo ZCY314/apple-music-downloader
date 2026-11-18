@@ -89,3 +89,11 @@ Playlist entries are handled as individual songs, not as tracks belonging to one
 - Reworked the interface around a quiet typographic grid, adaptive artwork layout and direct selection.
 - Removed artwork cards, decorative borders and the painted workspace background so album art can lead.
 - Simplified navigation and search-to-queue transitions; queue counts now reflect actual queued jobs.
+
+## Desktop 0.1.9
+
+- Validate pasted links against the Apple Music HTTPS hosts, ignore duplicates, and explain invalid lines before download.
+- Keep queue counts aligned with unfinished jobs and make the primary download action explicit.
+- Drain catalog-search output streams concurrently to prevent a full stderr pipe from stalling search.
+- Bound the in-memory activity log and keep search, queue, and activity typography consistent.
+- Improve empty-result feedback and VoiceOver labels for selection, clearing search, and removing jobs.
