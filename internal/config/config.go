@@ -258,6 +258,7 @@ func Load(opts LoadOptions) (*Config, error) {
 		cfg.Metadata.Tags.UseSongInfoForPlaylist = getUserOrExampleBool("metadata.format.use-songinfo-for-playlist")
 	}
 
+
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("validate config: %w", err)
 	}
