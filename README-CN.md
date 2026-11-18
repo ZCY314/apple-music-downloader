@@ -4,7 +4,7 @@
 
 > **原脚本由 Sorrow 编写。** 本仓库已修改并包含修复与改进。
 
-这是一个命令行工具，可从 Apple Music 下载专辑、单曲、播放列表、电台和音乐视频，支持 ALAC、AAC 和杜比全景声，并能保留或嵌入元数据与歌词。请仅用于你有权访问的内容，并遵守 Apple 条款和适用法律。
+这是一个轻量 macOS 原生 GUI + 命令行工具，可从 Apple Music 下载专辑、单曲、播放列表、电台和音乐视频，支持 ALAC、AAC 和杜比全景声，并能保留或嵌入元数据与歌词。桌面版使用 SwiftUI，不依赖 Electron。播放列表中的歌曲会按其原始专辑归档，而不是套用播放列表封面。请仅用于你有权访问的内容，并遵守 Apple 条款和适用法律。
 
 ## 目录
 
@@ -18,6 +18,7 @@
 - [升级](#升级)
 - [开发者指南](#开发者指南)
 - [功能文档](./docs/FEATURES.md)
+- [macOS 桌面 GUI](./docs/DESKTOP.md)
 - [贡献指南](./CONTRIBUTING.md)
 - [开发与维护](./docs/DEVELOPMENT.md)
 - [获取 media-user-token](#获取-media-user-token)

@@ -4,7 +4,7 @@
 
 > **Original script by Sorrow.** Modified with fixes and improvements.
 
-This command-line tool downloads albums, songs, playlists, stations and music videos from Apple Music, preserves or embeds metadata and lyrics, and supports ALAC, AAC and Dolby Atmos. Use it only with content you are entitled to access and in accordance with Apple's terms and applicable law.
+This lightweight macOS native GUI + command-line tool downloads albums, songs, playlists, stations and music videos from Apple Music, preserves or embeds metadata and lyrics, and supports ALAC, AAC and Dolby Atmos. The desktop app uses SwiftUI rather than Electron. Playlist songs are filed under their original albums instead of inheriting playlist artwork. Use it only with content you are entitled to access and in accordance with Apple's terms and applicable law.
 
 ## Contents
 
@@ -18,6 +18,7 @@ This command-line tool downloads albums, songs, playlists, stations and music vi
 - [Upgrade](#upgrade)
 - [For Developers](#for-developers)
 - [Feature Guide](./docs/FEATURES.md)
+- [macOS Desktop GUI](./docs/DESKTOP.md)
 - [Contributing](./CONTRIBUTING.md)
 - [Development and Maintenance](./docs/DEVELOPMENT.md)
 - [Get media-user-token](#get-media-user-token)

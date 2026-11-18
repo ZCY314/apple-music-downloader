@@ -59,3 +59,8 @@ The command-line flags include `--atmos`, `--aac`, and quality constraints such 
 - Search and catalog results are limited by Apple Music storefront and API responses.
 - Interactive selection requires a terminal (and a TTY when running in Docker).
 - Integration tests requiring live Apple Music credentials or a running wrapper-lite service are not part of the default CI suite.
+
+
+## Playlist organization
+
+Playlist entries are handled as individual songs, not as tracks belonging to one synthetic playlist album. Each song is resolved through its canonical Apple Music album and saved with that album's metadata and artwork in its normal artist/album directory. The playlist's title and cover are not applied to individual tracks.

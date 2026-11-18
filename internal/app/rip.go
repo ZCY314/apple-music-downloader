@@ -777,200 +777,63 @@ func (r *Runner) ripAlbum(albumId string, token string, storefront string, media
 
 func (r *Runner) ripPlaylist(playlistId string, token string, storefront string, mediaUserToken string) error {
 	playlist := model.NewPlaylist(storefront, playlistId)
-	err := playlist.GetResp(token, r.Config.General.Language)
-	if err != nil {
-		fmt.Println("Failed to get playlist response.")
-		return err
+	if err := playlist.GetResp(token, r.Config.General.Language); err != nil {
+		return fmt.Errorf("get playlist response: %w", err)
 	}
 	meta := playlist.Resp
+	if len(meta.Data) == 0 {
+		return fmt.Errorf("playlist %s contains no catalog data", playlistId)
+	}
+	tracks := meta.Data[0].Relationships.Tracks.Data
+	fmt.Printf("Playlist: %s (%d tracks)\n", meta.Data[0].Attributes.Name, len(tracks))
+
 	if r.Flags.Debug {
-		fmt.Println(meta.Data[0].Attributes.ArtistName)
-		fmt.Println(meta.Data[0].Attributes.Name)
-
-		for trackNum, track := range meta.Data[0].Relationships.Tracks.Data {
-			trackNum++
-			fmt.Printf("\nTrack %d of %d:\n", trackNum, len(meta.Data[0].Relationships.Tracks.Data))
-			fmt.Printf("%02d. %s\n", trackNum, track.Attributes.Name)
-
+		for trackNum, track := range tracks {
+			fmt.Printf("\nTrack %d of %d: %s - %s\n", trackNum+1, len(tracks), track.Attributes.Name, track.Attributes.ArtistName)
 			manifest, err := ampapi.GetSongResp(storefront, track.ID, playlist.Language, token)
-			if err != nil {
-				fmt.Printf("Failed to get manifest for track %d: %v\n", trackNum, err)
+			if err != nil || len(manifest.Data) == 0 {
+				fmt.Printf("Failed to get manifest for track %d: %v\n", trackNum+1, err)
 				continue
 			}
-
-			var m3u8Url string
-			if manifest.Data[0].Attributes.ExtendedAssetUrls.EnhancedHls != "" {
-				m3u8Url = manifest.Data[0].Attributes.ExtendedAssetUrls.EnhancedHls
-			}
-			needCheck := false
-			if r.Config.Media.GetM3u8Mode == "all" {
-				needCheck = true
-			} else if r.Config.Media.GetM3u8Mode == "hires" && contains(track.Attributes.AudioTraits, "hi-res-lossless") {
-				needCheck = true
-			}
-			if needCheck {
-				fullM3u8Url, err := r.checkM3u8(track.ID, "song")
-				if err == nil && strings.HasSuffix(fullM3u8Url, ".m3u8") {
-					m3u8Url = fullM3u8Url
-				} else {
-					fmt.Println("Failed to get best quality m3u8 from lite-server, will use m3u8 from Web API")
-				}
-			}
-
-			_, _, err = r.extractMedia(m3u8Url, true)
-			if err != nil {
-				fmt.Printf("Failed to extract quality info for track %d: %v\n", trackNum, err)
+			m3u8URL := manifest.Data[0].Attributes.ExtendedAssetUrls.EnhancedHls
+			if m3u8URL == "" {
 				continue
+			}
+			if _, _, err := r.extractMedia(m3u8URL, true); err != nil {
+				fmt.Printf("Failed to inspect track %d quality: %v\n", trackNum+1, err)
 			}
 		}
 		return nil
 	}
-	var Codec string
-	if r.Flags.Atmos {
-		Codec = "ATMOS"
-	} else if r.Flags.AAC {
-		Codec = "AAC"
-	} else {
-		Codec = "ALAC"
+
+	selected := make([]int, len(tracks))
+	for i := range tracks {
+		selected[i] = i + 1
 	}
-	playlist.Codec = Codec
-	var singerFoldername string
-	if r.Config.Paths.ArtistFolder != "" {
-		singerFoldername = strings.NewReplacer(
-			"{ArtistName}", "Apple Music",
-			"{ArtistId}", "",
-			"{UrlArtistName}", "Apple Music",
-		).Replace(r.Config.Paths.ArtistFolder)
-		if strings.HasSuffix(singerFoldername, ".") {
-			singerFoldername = strings.ReplaceAll(singerFoldername, ".", "")
+	if r.Flags.Select {
+		selected = playlist.ShowSelect()
+	}
+
+	// A playlist is a collection of songs, not an album. Route each selected
+	// song through ripSong -> ripAlbum(songID), which resolves its canonical
+	// Apple Music album, album artwork, album artist, release date and track
+	// numbering. This prevents playlist artwork/name from contaminating tags
+	// and places every song in its real album directory.
+	var firstErr error
+	for _, index := range selected {
+		if index < 1 || index > len(tracks) {
+			continue
 		}
-		singerFoldername = strings.TrimSpace(singerFoldername)
-		fmt.Println(singerFoldername)
-	}
-	singerFolder := filepath.Join(r.Config.Paths.Alac, forbiddenNames.ReplaceAllString(singerFoldername, "_"))
-	if r.Flags.Atmos {
-		singerFolder = filepath.Join(r.Config.Paths.Atmos, forbiddenNames.ReplaceAllString(singerFoldername, "_"))
-	}
-	if r.Flags.AAC {
-		singerFolder = filepath.Join(r.Config.Paths.Aac, forbiddenNames.ReplaceAllString(singerFoldername, "_"))
-	}
-	if err := createDirectory(singerFolder); err != nil {
-		return err
-	}
-	playlist.SaveDir = singerFolder
-
-	var Quality string
-	if strings.Contains(r.Config.Paths.AlbumFolder, "Quality") {
-		if r.Flags.Atmos {
-			Quality = fmt.Sprintf("%dKbps", r.Config.Media.AtmosMax-2000)
-		} else if r.Flags.AAC && r.Config.Media.AacType == "aac-lc" {
-			Quality = "256Kbps"
-		} else {
-			manifest1, err := ampapi.GetSongResp(storefront, meta.Data[0].Relationships.Tracks.Data[0].ID, playlist.Language, token)
-			if err != nil {
-				fmt.Println("Failed to get manifest.\n", err)
-			} else {
-				if manifest1.Data[0].Attributes.ExtendedAssetUrls.EnhancedHls == "" {
-					Codec = "AAC"
-					Quality = "256Kbps"
-				} else {
-					needCheck := false
-
-					if r.Config.Media.GetM3u8Mode == "all" {
-						needCheck = true
-					} else if r.Config.Media.GetM3u8Mode == "hires" && contains(meta.Data[0].Relationships.Tracks.Data[0].Attributes.AudioTraits, "hi-res-lossless") {
-						needCheck = true
-					}
-					var EnhancedHls_m3u8 string
-					if needCheck {
-						EnhancedHls_m3u8, _ = r.checkM3u8(meta.Data[0].Relationships.Tracks.Data[0].ID, "album")
-						if strings.HasSuffix(EnhancedHls_m3u8, ".m3u8") {
-							manifest1.Data[0].Attributes.ExtendedAssetUrls.EnhancedHls = EnhancedHls_m3u8
-						}
-					}
-					_, Quality, err = r.extractMedia(manifest1.Data[0].Attributes.ExtendedAssetUrls.EnhancedHls, true)
-					if err != nil {
-						fmt.Println("Failed to extract quality from manifest.\n", err)
-					}
-				}
+		track := tracks[index-1]
+		fmt.Printf("\nPlaylist track %d/%d: %s — %s\n", index, len(tracks), track.Attributes.Name, track.Attributes.ArtistName)
+		if err := r.ripSong(track.ID, token, storefront, mediaUserToken); err != nil {
+			fmt.Printf("Failed to download playlist track %q: %v\n", track.Attributes.Name, err)
+			if firstErr == nil {
+				firstErr = err
 			}
 		}
 	}
-	stringsToJoin := []string{}
-	if meta.Data[0].Attributes.IsAppleDigitalMaster || meta.Data[0].Attributes.IsMasteredForItunes {
-		if r.Config.Paths.AppleMaster != "" {
-			stringsToJoin = append(stringsToJoin, r.Config.Paths.AppleMaster)
-		}
-	}
-	if meta.Data[0].Attributes.ContentRating == "explicit" {
-		if r.Config.Paths.Explicit != "" {
-			stringsToJoin = append(stringsToJoin, r.Config.Paths.Explicit)
-		}
-	}
-	if meta.Data[0].Attributes.ContentRating == "clean" {
-		if r.Config.Paths.Clean != "" {
-			stringsToJoin = append(stringsToJoin, r.Config.Paths.Clean)
-		}
-	}
-	Tag_string := strings.Join(stringsToJoin, " ")
-	playlistFolder := strings.NewReplacer(
-		"{ArtistName}", "Apple Music",
-		"{PlaylistName}", r.LimitString(meta.Data[0].Attributes.Name),
-		"{PlaylistId}", playlistId,
-		"{Quality}", Quality,
-		"{Codec}", Codec,
-		"{Tag}", Tag_string,
-	).Replace(r.Config.Paths.PlaylistFolder)
-	playlistFolderPath, err := r.prepareCollectionFolder(singerFolder, playlistFolder)
-	if err != nil {
-		return err
-	}
-	playlist.SaveName = playlistFolder
-	fmt.Println(playlistFolder)
-	covPath, err := r.writeCover(playlistFolderPath, "cover", meta.Data[0].Attributes.Artwork.URL)
-	if err != nil {
-		fmt.Println("Failed to write cover.")
-	}
-
-	for i := range playlist.Tracks {
-		playlist.Tracks[i].CoverPath = covPath
-		playlist.Tracks[i].SaveDir = playlistFolderPath
-		playlist.Tracks[i].Codec = Codec
-	}
-
-	if r.Config.Metadata.Artwork.SaveAnimated {
-		r.saveAnimatedArtwork(
-			playlistFolderPath,
-			meta.Data[0].Attributes.EditorialVideo.MotionDetailSquare.Video,
-			meta.Data[0].Attributes.EditorialVideo.MotionDetailTall.Video,
-		)
-	}
-	trackTotal := len(meta.Data[0].Relationships.Tracks.Data)
-	arr := make([]int, trackTotal)
-	for i := 0; i < trackTotal; i++ {
-		arr[i] = i + 1
-	}
-	var selected []int
-
-	if !r.Flags.Select {
-		selected = arr
-	} else {
-		selected = playlist.ShowSelect()
-	}
-	startIdx := len(r.State.AddedTracks)
-	for i := range playlist.Tracks {
-		i++
-		if contains(r.State.OKDict[playlistId], i) {
-			r.State.Counter.Total++
-			r.State.Counter.Success++
-			continue
-		}
-		if contains(selected, i) {
-			r.ripTrack(&playlist.Tracks[i-1], token, mediaUserToken)
-		}
-	}
-	r.saveM3UPlaylist(playlistFolderPath, playlistFolder, startIdx)
-	return nil
+	return firstErr
 }
 
 func (r *Runner) ripSong(songId string, token string, storefront string, mediaUserToken string) error {

@@ -23,3 +23,7 @@
 !/internal/**
 !/cmd/
 !/cmd/**
+!/desktop/
+!/desktop/**
+!/docs/
+!/docs/**
