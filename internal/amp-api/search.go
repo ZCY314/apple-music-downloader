@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 
 	"amdl/internal/download"
 )
@@ -77,7 +78,9 @@ func Search(storefront, term, types, language, token string, limit, offset int) 
 	query.Set("l", language)
 	req.URL.RawQuery = query.Encode()
 
-	do, err := download.Client.Do(req)
+	client := *download.Client
+	client.Timeout = 12 * time.Second
+	do, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}

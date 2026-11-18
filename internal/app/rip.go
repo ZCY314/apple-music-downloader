@@ -844,7 +844,13 @@ func (r *Runner) ripSong(songId string, token string, storefront string, mediaUs
 		return err
 	}
 
+	if len(manifest.Data) == 0 {
+		return fmt.Errorf("song %s has no catalog data", songId)
+	}
 	songData := manifest.Data[0]
+	if len(songData.Relationships.Albums.Data) == 0 {
+		return fmt.Errorf("song %s has no original album relationship", songId)
+	}
 	albumId := songData.Relationships.Albums.Data[0].ID
 
 	// Use album approach but only download the specific song

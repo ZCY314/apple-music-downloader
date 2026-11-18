@@ -18,6 +18,7 @@ type Flags struct {
 	ArtistSelect   bool
 	Debug          bool
 	PrintJSON      bool
+	JSONSearch     bool
 	SaveM3U8       bool
 	LiteServerFlag string
 	Version        bool

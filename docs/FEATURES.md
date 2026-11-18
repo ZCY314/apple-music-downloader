@@ -31,7 +31,7 @@ Use `--select` to select multiple results:
 Behavior:
 
 1. Search keeps the original phrase, then adds bounded query variants: reversed word order, individual words, adjacent word pairs, and overlapping Chinese title fragments.
-2. Album searches also query the Hong Kong, Taiwan and Singapore storefronts in addition to the configured storefront. Regional fallbacks use the original phrase and preserve each result's storefront URL.
+2. Album searches query CN first by default, then HK, TW, SG and US storefronts in addition to the configured storefront. Regional fallbacks use the original phrase and preserve each result's storefront URL.
 3. Each query follows Apple Music API pagination (up to four pages of 25 results); results are merged by catalog ID and duplicates are removed.
 4. The combined results are presented in local pages of up to 15 items.
 5. In multi-select mode, use Space to toggle results and Enter to confirm the page. Choose next/previous page to continue; selections are accumulated across pages.
@@ -64,3 +64,10 @@ The command-line flags include `--atmos`, `--aac`, and quality constraints such 
 ## Playlist organization
 
 Playlist entries are handled as individual songs, not as tracks belonging to one synthetic playlist album. Each song is resolved through its canonical Apple Music album and saved with that album's metadata and artwork in its normal artist/album directory. The playlist's title and cover are not applied to individual tracks.
+
+## Desktop and catalog retrieval
+
+- Native Intel macOS SwiftUI app with a focused search, download queue, activity log and preferences UI.
+- CN-first Apple Music catalog search with HK/TW/SG/US fallbacks and deduplicated results.
+- Optional Tencent Hunyuan search enhancement proposes alternate catalog query phrases; Apple Music remains the source of truth.
+- Playlist tracks are resolved individually and saved with their original album metadata and artwork.

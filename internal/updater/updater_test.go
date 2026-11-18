@@ -208,7 +208,7 @@ func TestRunConfigMigrationGuideRealExample(t *testing.T) {
 	example := string(data)
 
 	user := removeKeys(example, "media.alac-fix", "media.mv", "metadata.lyrics.format", "convert")
-	user = strings.Replace(user, `storefront: "us"`, `storefront: "jp"`, 1)
+	user = strings.Replace(user, `storefront: "cn"`, `storefront: "jp"`, 1)
 	user = strings.ReplaceAll(user, "\n", "\r\n") // Windows-edited config
 
 	configPath := filepath.Join(t.TempDir(), "config.yaml")

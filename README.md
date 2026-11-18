@@ -6,6 +6,10 @@
 
 This lightweight macOS native GUI + command-line tool downloads albums, songs, playlists, stations and music videos from Apple Music, preserves or embeds metadata and lyrics, and supports ALAC, AAC and Dolby Atmos. The desktop app uses SwiftUI rather than Electron. Playlist songs are filed under their original albums instead of inheriting playlist artwork. Use it only with content you are entitled to access and in accordance with Apple's terms and applicable law.
 
+## AMDL Desktop (macOS)
+
+A lightweight native SwiftUI desktop interface with CN-first catalog search, optional Tencent Hunyuan search enhancement, multi-select results, a download queue, and live task activity. Playlist tracks are resolved and filed under their own original albums. See [Desktop documentation](docs/DESKTOP.md).
+
 ## Contents
 
 - [Features](#features)

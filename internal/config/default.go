@@ -5,7 +5,7 @@ package config
 func Default() Config {
 	return Config{
 		General: GeneralConfig{
-			Storefront:         "us",
+			Storefront:         "cn",
 			MediaUserToken:     "",
 			AuthorizationToken: "",
 			Language:           "",
@@ -59,7 +59,7 @@ func Default() Config {
 			Tags: TagsConfig{
 				SortOrder:              true,
 				ItunesID:               true,
-				UseSongInfoForPlaylist: false,
+				UseSongInfoForPlaylist: true,
 			},
 		},
 		Convert: ConvertConfig{

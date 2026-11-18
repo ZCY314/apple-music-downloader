@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"unicode"
 
@@ -10,11 +11,12 @@ import (
 )
 
 type SearchResultItem struct {
-	Type   string
-	Name   string
-	Detail string
-	URL    string
-	ID     string
+	Type    string `json:"type"`
+	Name    string `json:"name"`
+	Detail  string `json:"detail"`
+	URL     string `json:"url"`
+	ID      string `json:"id"`
+	Artwork string `json:"artwork"`
 }
 
 type QualityOption struct {
@@ -143,14 +145,14 @@ func searchItems(resp *ampapi.SearchResp, searchType string) []SearchResultItem 
 					year = item.Attributes.ReleaseDate[:4]
 				}
 				detail := fmt.Sprintf("%s (%s, %d tracks)", item.Attributes.ArtistName, year, item.Attributes.TrackCount)
-				items = append(items, SearchResultItem{Type: "Album", Name: item.Attributes.Name, Detail: detail, URL: item.Attributes.URL, ID: item.ID})
+				items = append(items, SearchResultItem{Type: "Album", Name: item.Attributes.Name, Detail: detail, URL: item.Attributes.URL, ID: item.ID, Artwork: item.Attributes.Artwork.URL})
 			}
 		}
 	case "song":
 		if resp.Results.Songs != nil {
 			for _, item := range resp.Results.Songs.Data {
 				detail := fmt.Sprintf("%s (%s)", item.Attributes.ArtistName, item.Attributes.AlbumName)
-				items = append(items, SearchResultItem{Type: "Song", Name: item.Attributes.Name, Detail: detail, URL: item.Attributes.URL, ID: item.ID})
+				items = append(items, SearchResultItem{Type: "Song", Name: item.Attributes.Name, Detail: detail, URL: item.Attributes.URL, ID: item.ID, Artwork: item.Attributes.Artwork.URL})
 			}
 		}
 	case "artist":
@@ -179,13 +181,13 @@ func searchHasNext(resp *ampapi.SearchResp, searchType string) bool {
 func searchStorefronts(primary, searchType string) []string {
 	primary = strings.ToLower(strings.TrimSpace(primary))
 	if primary == "" {
-		primary = "us"
+		primary = "cn"
 	}
 	storefronts := []string{primary}
 	if searchType == "album" {
-		// Regional catalogue searches are important for Hong Kong/Taiwan
-		// releases that may not be indexed in the user's default storefront.
-		for _, region := range []string{"hk", "tw", "sg"} {
+		// Keep CN in the catalogue fallback set even when a user changes the
+		// preferred storefront; CN remains first by default.
+		for _, region := range []string{"cn", "hk", "tw", "sg", "us"} {
 			if !contains(storefronts, region) {
 				storefronts = append(storefronts, region)
 			}
@@ -201,14 +203,14 @@ func (r *Runner) fetchSearchResults(searchType, query, token string) ([]SearchRe
 	var firstErr error
 
 	fetch := func(storefront, searchQuery string) {
-		fmt.Printf("Searching %s for %q\n", strings.ToUpper(storefront), searchQuery)
+		fmt.Fprintf(os.Stderr, "Searching %s for %q\n", strings.ToUpper(storefront), searchQuery)
 		for page := 0; page < searchMaxPages; page++ {
 			resp, err := ampapi.Search(storefront, searchQuery, searchType+"s", r.Config.General.Language, token, searchPageSize, page*searchPageSize)
 			if err != nil {
 				if firstErr == nil {
 					firstErr = err
 				}
-				fmt.Printf("Warning: search pass %q in %s page %d failed: %v\n", searchQuery, strings.ToUpper(storefront), page+1, err)
+				fmt.Fprintf(os.Stderr, "Warning: search pass %q in %s page %d failed: %v\n", searchQuery, strings.ToUpper(storefront), page+1, err)
 				break
 			}
 			for _, item := range searchItems(resp, searchType) {

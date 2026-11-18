@@ -32,6 +32,7 @@ func Main() {
 	pflag.BoolVar(&r.Flags.ArtistSelect, "all-album", false, "Download all artist albums")
 	pflag.BoolVar(&r.Flags.Debug, "debug", false, "Enable debug mode to show audio quality information")
 	pflag.BoolVar(&r.Flags.PrintJSON, "json", false, "Output JSON summary at the end")
+	pflag.BoolVar(&r.Flags.JSONSearch, "json-search", false, "Output catalog search results as JSON and exit (use with --search)")
 	pflag.BoolVar(&r.Flags.SaveM3U8, "save-m3u8-playlist", false, "Save M3U8 playlist file")
 	pflag.StringVar(&r.Flags.LiteServerFlag, "lite-server", "", "wrapper-lite HTTP API endpoint for this run")
 	pflag.Int("alac-max", 0, "Specify the max quality for download alac")
@@ -104,15 +105,19 @@ func Main() {
 		return
 	}
 
-	updater.PrintStartupUpdateNotice(r.Config.General.Proxy)
+	if !r.Flags.JSONSearch {
+		updater.PrintStartupUpdateNotice(r.Config.General.Proxy)
+	}
 	if r.Flags.LiteServerFlag == "" {
 		r.Flags.LiteServerFlag = r.Config.General.LiteServer
 	}
 
-	if regions, err := r.getLiteRegions(); err != nil {
-		fmt.Println("Warning: failed to query lite-server /status:", err)
-	} else {
-		fmt.Printf("lite-server regions: %s\n", regions)
+	if !r.Flags.JSONSearch {
+		if regions, err := r.getLiteRegions(); err != nil {
+			fmt.Fprintln(os.Stderr, "Warning: failed to query lite-server /status:", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "lite-server regions: %s\n", regions)
+		}
 	}
 	if err := download.Init(r.Config.General.Proxy); err != nil {
 		fmt.Printf("proxy config error: %v\n", err)
@@ -129,6 +134,22 @@ func Main() {
 	}
 
 	args := pflag.Args()
+	if r.Flags.JSONSearch {
+		if search_type == "" || len(args) == 0 {
+			fmt.Fprintln(os.Stderr, "--json-search requires --search album|song|artist and a query")
+			os.Exit(2)
+		}
+		items, searchErr := r.fetchSearchResults(search_type, strings.Join(args, " "), token)
+		if searchErr != nil {
+			fmt.Fprintln(os.Stderr, searchErr)
+			os.Exit(1)
+		}
+		if err := json.NewEncoder(os.Stdout).Encode(items); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	// In album search batch mode, --select chooses albums; each chosen album
 	// should download all tracks without prompting again for track numbers.

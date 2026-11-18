@@ -105,10 +105,10 @@ func TestSearchStorefronts(t *testing.T) {
 		name, primary, searchType string
 		want                      []string
 	}{
-		{name: "album search includes regional catalogs", primary: "us", searchType: "album", want: []string{"us", "hk", "tw", "sg"}},
-		{name: "configured regional catalog is not duplicated", primary: "HK", searchType: "album", want: []string{"hk", "tw", "sg"}},
-		{name: "song search stays in configured catalog", primary: "us", searchType: "song", want: []string{"us"}},
-		{name: "empty storefront defaults safely", primary: "", searchType: "album", want: []string{"us", "hk", "tw", "sg"}},
+		{name: "album search includes regional catalogs", primary: "cn", searchType: "album", want: []string{"cn", "hk", "tw", "sg", "us"}},
+		{name: "configured regional catalog keeps CN fallback", primary: "HK", searchType: "album", want: []string{"hk", "cn", "tw", "sg", "us"}},
+		{name: "song search stays in configured catalog", primary: "cn", searchType: "song", want: []string{"cn"}},
+		{name: "empty storefront defaults safely", primary: "", searchType: "album", want: []string{"cn", "hk", "tw", "sg", "us"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

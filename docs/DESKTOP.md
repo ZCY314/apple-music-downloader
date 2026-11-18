@@ -1,29 +1,29 @@
 # AMDL Desktop (macOS)
 
-AMDL Desktop is a small native SwiftUI front end for the existing AMDL command-line engine. It has no Electron or Node.js runtime.
+AMDL Desktop is a lightweight native SwiftUI interface around the existing Go download engine. It has no Electron, Chromium, Node.js runtime, database daemon, or always-on background service. The target for this build is Intel macOS (x86_64).
 
-## Features
+## Product principles
 
-- Paste one or many Apple Music album, song, artist or playlist URLs.
-- Open Apple Music search in the browser, then paste the selected catalog links.
-- Select ALAC, Dolby Atmos or AAC.
-- Start a batch and watch the downloader's live output.
-- Open the configured music folder or YAML settings file.
+- A playlist is a list of individual songs. Each song resolves its canonical Apple Music album and is downloaded through the original album path, preserving its own album title, artwork, artist, release date, and track number. The playlist title and playlist artwork are not used as album metadata.
+- CN is the primary storefront. Album search checks CN first, then HK, TW, SG, and US; the result URL retains its original storefront.
+- Search results can be expanded by Tencent Hunyuan. The model proposes alternate Chinese/English/alias search phrases; Apple Music Catalog remains the source of truth for downloadable catalog entries.
+- Hunyuan uses Tencent's OpenAI-compatible endpoint with `enable_enhancement: true`. Add an API Key in Preferences; it is stored in macOS Keychain. If no key is configured or the service is unavailable, native Apple Music search remains available.
+- Search results can be selected and added to a download queue. The queue also accepts pasted Apple Music URLs.
+- ALAC, Dolby Atmos, and AAC are supported. Live output is shown in the Activity view.
 
-## Build
+## Build (Intel Mac)
 
 ```sh
 go build -trimpath -o /tmp/amdl .
-mkdir -p "AMDL Desktop.app/Contents/MacOS" "AMDL Desktop.app/Contents/Resources"
-swiftc -O -target x86_64-apple-macosx13.0 -framework SwiftUI -framework AppKit \
-  desktop/AMDLDesktop.swift -o "AMDL Desktop.app/Contents/MacOS/AMDLDesktop"
-cp /tmp/amdl "AMDL Desktop.app/Contents/Resources/amdl"
+mkdir -p 'AMDL Desktop.app/Contents/MacOS' 'AMDL Desktop.app/Contents/Resources'
+swiftc -parse-as-library -O -target x86_64-apple-macosx13.0 \
+  -framework SwiftUI -framework AppKit -framework Security \
+  desktop/AMDLDesktop.swift -o 'AMDL Desktop.app/Contents/MacOS/AMDLDesktop'
+cp /tmp/amdl 'AMDL Desktop.app/Contents/Resources/amdl'
 ```
 
-Create `AMDL Desktop.app/Contents/Info.plist` with `CFBundleExecutable=AMDLDesktop`, `CFBundleIdentifier=org.zcy314.amdl.desktop`, `CFBundleName=AMDL Desktop`, `CFBundlePackageType=APPL`, and `LSMinimumSystemVersion=13.0`.
+The app expects `~/Music/AppleMusic/config.yaml` and uses `~/Music/AppleMusic` as its working directory. The CLI remains independently usable.
 
-The app expects the existing configuration at `~/Music/AppleMusic/config.yaml` and uses `~/Music/AppleMusic` as its working directory. The CLI remains available independently.
+## GUI search protocol
 
-## Playlist organization
-
-A playlist is treated as a list of individual catalog songs. For each selected entry, AMDL resolves the song's canonical album and delegates to the normal single-song album path. The downloaded file therefore receives the original album metadata and artwork and is saved in the corresponding artist/album folder. The playlist title and playlist cover are not written as the song's album metadata.
+`amdl --config <path> --search album|song|artist --json-search <query...>` prints catalog results as JSON to stdout; diagnostics go to stderr. This keeps the SwiftUI interface independent of terminal prompts.

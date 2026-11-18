@@ -8,7 +8,7 @@ general:
   language: ""                            # Storefront language code (e.g. "en-US", "ja", "zh-Hans-CN")
   max-memory-limit: 256                   # Maximum memory buffer limit in MB for stream processing
   proxy: ""                               # HTTP/SOCKS5 proxy (e.g. "http://127.0.0.1:7890", "socks5://127.0.0.1:1080")
-  storefront: "us"                        # Storefront country code; used only for search or missing URL storefront
+  storefront: "cn"                        # Storefront country code; used only for search or missing URL storefront
   authorization-token: ""                 # Bearer token for Apple Music API (leave blank to auto-fetch)
   exit-on-error: false                    # Set true to exit on download errors instead of prompting interactively
 
@@ -76,7 +76,7 @@ metadata:
   tags:
     sort-order: true                      # Write iTunes sort order tags (artist, album artist, album name)
     itunes-id: true                       # Write iTunes catalog IDs into metadata
-    use-songinfo-for-playlist: false      # For playlists, use original song info for album name, track and disc number
+    use-songinfo-for-playlist: true      # For playlists, use original song info for album name, track and disc number
 
 # ------------------------------------------------------------------------------
 # 5. Conversion Settings (Post-download Audio Transcoding via FFmpeg)

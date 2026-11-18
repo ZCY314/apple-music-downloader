@@ -11,8 +11,8 @@ import (
 
 func TestDefaultConfig(t *testing.T) {
 	cfg := Default()
-	if cfg.General.Storefront != "us" {
-		t.Errorf("General.Storefront = %q, want 'us'", cfg.General.Storefront)
+	if cfg.General.Storefront != "cn" {
+		t.Errorf("General.Storefront = %q, want 'cn'", cfg.General.Storefront)
 	}
 	if cfg.Media.AlacMax != 192000 {
 		t.Errorf("Media.AlacMax = %d, want 192000", cfg.Media.AlacMax)
@@ -59,8 +59,8 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Metadata.Lyrics.Format != "lrc" {
 		t.Errorf("Metadata.Lyrics.Format = %q, want 'lrc'", cfg.Metadata.Lyrics.Format)
 	}
-	if cfg.Metadata.Tags.UseSongInfoForPlaylist {
-		t.Errorf("Metadata.Tags.UseSongInfoForPlaylist = %v, want false", cfg.Metadata.Tags.UseSongInfoForPlaylist)
+	if !cfg.Metadata.Tags.UseSongInfoForPlaylist {
+		t.Errorf("Metadata.Tags.UseSongInfoForPlaylist = %v, want true", cfg.Metadata.Tags.UseSongInfoForPlaylist)
 	}
 	if cfg.Convert.Format != "flac" {
 		t.Errorf("Convert.Format = %q, want 'flac'", cfg.Convert.Format)
@@ -181,8 +181,8 @@ func TestValidate(t *testing.T) {
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() failed: %v", err)
 	}
-	if cfg.General.Storefront != "us" {
-		t.Errorf("General.Storefront = %q, want 'us'", cfg.General.Storefront)
+	if cfg.General.Storefront != "cn" {
+		t.Errorf("General.Storefront = %q, want 'cn'", cfg.General.Storefront)
 	}
 	if cfg.Media.AlacMax != 192000 {
 		t.Errorf("Media.AlacMax = %d, want 192000", cfg.Media.AlacMax)
@@ -201,8 +201,8 @@ func TestLoadActualExampleFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to load config.yaml.example: %v", err)
 	}
-	if cfg.General.Storefront != "us" {
-		t.Errorf("General.Storefront = %q, want 'us'", cfg.General.Storefront)
+	if cfg.General.Storefront != "cn" {
+		t.Errorf("General.Storefront = %q, want 'cn'", cfg.General.Storefront)
 	}
 	if cfg.General.LiteServer != "http://127.0.0.1:12340" {
 		t.Errorf("General.LiteServer = %q, want 'http://127.0.0.1:12340'", cfg.General.LiteServer)
@@ -219,8 +219,8 @@ func TestLoadActualExampleFile(t *testing.T) {
 	if cfg.Paths.Explicit != "[E]" {
 		t.Errorf("Paths.Explicit = %q, want '[E]'", cfg.Paths.Explicit)
 	}
-	if cfg.Metadata.Tags.UseSongInfoForPlaylist {
-		t.Errorf("Metadata.Tags.UseSongInfoForPlaylist = %v, want false", cfg.Metadata.Tags.UseSongInfoForPlaylist)
+	if !cfg.Metadata.Tags.UseSongInfoForPlaylist {
+		t.Errorf("Metadata.Tags.UseSongInfoForPlaylist = %v, want true", cfg.Metadata.Tags.UseSongInfoForPlaylist)
 	}
 }
 
@@ -429,4 +429,3 @@ func TestCustomConfigMissingDoesNotAutoCreate(t *testing.T) {
 		t.Errorf("Custom config file %s should not have been created", customFile)
 	}
 }
-

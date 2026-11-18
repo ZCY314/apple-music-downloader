@@ -270,7 +270,7 @@ func (c *Config) Validate() error {
 	// General
 	c.General.Storefront = strings.ToLower(strings.TrimSpace(c.General.Storefront))
 	if len(c.General.Storefront) != 2 {
-		c.General.Storefront = "us"
+		c.General.Storefront = "cn"
 	}
 	if c.General.MaxMemoryLimit == 0 {
 		c.General.MaxMemoryLimit = 256
