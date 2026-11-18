@@ -291,7 +291,6 @@ func (r *Runner) handleSearch(searchType string, queryParts []string, token stri
 
 // CONVERSION FEATURE: Determine if source codec is lossy (rough heuristic by extension/codec name).
 
-
 // appendUniqueURL adds a URL only once while preserving the user's selection order.
 func appendUniqueURL(urls []string, candidate string) []string {
 	for _, existing := range urls {
