@@ -14,6 +14,7 @@ type Flags struct {
 	Atmos          bool
 	AAC            bool
 	Select         bool
+	BatchSelectAll bool
 	ArtistSelect   bool
 	Debug          bool
 	PrintJSON      bool

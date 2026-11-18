@@ -130,6 +130,10 @@ func Main() {
 
 	args := pflag.Args()
 
+	// In album search batch mode, --select chooses albums; download all tracks
+	// from each selected album without prompting for track numbers again.
+	r.Flags.BatchSelectAll = r.Flags.Select && search_type == "album"
+
 	if search_type != "" {
 		if len(args) == 0 {
 			fmt.Println("Error: --search flag requires a query.")
@@ -318,4 +322,3 @@ func progName() string {
 	}
 	return "amdl"
 }
-

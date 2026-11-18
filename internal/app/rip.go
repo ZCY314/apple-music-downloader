@@ -753,7 +753,7 @@ func (r *Runner) ripAlbum(albumId string, token string, storefront string, media
 		return nil
 	}
 	var selected []int
-	if !r.Flags.Select {
+	if !r.Flags.Select || r.Flags.BatchSelectAll {
 		selected = arr
 	} else {
 		selected = album.ShowSelect()
