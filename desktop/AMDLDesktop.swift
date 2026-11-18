@@ -389,7 +389,9 @@ struct MainView: View {
     private func resultCard(_ item: CatalogItem) -> some View {
         let selected = selectedIDs.contains(item.id)
         return Button {
-            if selected { selectedIDs.remove(item.id) } else { selectedIDs.insert(item.id) }
+            if item.type == "record-labels" || item.type == "curators" {
+                if let url = URL(string: item.url) { NSWorkspace.shared.open(url) }
+            } else if selected { selectedIDs.remove(item.id) } else { selectedIDs.insert(item.id) }
         } label: {
             VStack(alignment: .leading, spacing: 9) {
                 ZStack(alignment: .topTrailing) {
@@ -414,7 +416,9 @@ struct MainView: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
-            Button("加入下载队列") { if !queueJobs.contains(where: { $0.url == item.url }) { queueJobs.append(QueueJob(url: item.url, message: item.name)) } }
+            if item.type != "record-labels" && item.type != "curators" {
+                Button("加入下载队列") { if !queueJobs.contains(where: { $0.url == item.url }) { queueJobs.append(QueueJob(url: item.url, message: item.name)) } }
+            }
             Button("在 Apple Music 中打开") { if let url = URL(string: item.url) { NSWorkspace.shared.open(url) } }
         }
     }
