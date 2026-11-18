@@ -17,6 +17,9 @@ This command-line tool downloads albums, songs, playlists, stations and music vi
 - [Usage](#usage)
 - [Upgrade](#upgrade)
 - [For Developers](#for-developers)
+- [Feature Guide](./docs/FEATURES.md)
+- [Contributing](./CONTRIBUTING.md)
+- [Development and Maintenance](./docs/DEVELOPMENT.md)
 - [Get media-user-token](#get-media-user-token)
 - [Lyrics options](#lyrics-options)
 - [Credits](#credits)
@@ -485,6 +488,10 @@ go build -o amdl.exe .
 Releases are driven by the `VERSION` file. When a push to `main` carries a `VERSION` whose `v<VERSION>` tag does not exist yet, the Release workflow builds every platform and publishes a GitHub Release with that tag. To cut a release, bump `VERSION` (e.g. `0.1.0` → `0.1.1`) and merge it into `main`. A version with a suffix such as `0.2.0-beta.1` is published as a pre-release.
 
 Release binaries self-update from the repository that built them, so a fork's releases update from the fork.
+
+## Project maintenance
+
+This fork is maintained at [ZCY314/apple-music-downloader](https://github.com/ZCY314/apple-music-downloader). See the [feature guide](./docs/FEATURES.md), [development guide](./docs/DEVELOPMENT.md), and [contribution guidelines](./CONTRIBUTING.md) for behavior, testing and release procedures.
 
 ## Credits
 
