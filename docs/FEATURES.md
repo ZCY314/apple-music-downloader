@@ -30,14 +30,16 @@ Use `--select` to select multiple results:
 
 Behavior:
 
-1. Results are presented in pages of up to 15 items.
-2. In multi-select mode, use Space to toggle results and Enter to confirm the page.
-3. Choose the next/previous page option to continue browsing. Selections are accumulated across pages.
-4. Choose **Finish selection** when ready to process the accumulated results.
-5. Duplicate URLs are ignored while preserving selection order.
-6. A single quality choice is applied to the selected batch.
-7. For album search with `--select`, selected albums download all tracks; the downloader does not ask for a second track-by-track selection.
-8. For artist search with `--select`, each selected artist is expanded into albums and music videos. The configured artist-folder template is resolved per artist so results remain grouped correctly.
+1. Search keeps the original phrase, then adds bounded query variants: reversed word order, individual words, adjacent word pairs, and overlapping Chinese title fragments.
+2. Album searches also query the Hong Kong, Taiwan and Singapore storefronts in addition to the configured storefront. Regional fallbacks use the original phrase and preserve each result's storefront URL.
+3. Each query follows Apple Music API pagination (up to four pages of 25 results); results are merged by catalog ID and duplicates are removed.
+4. The combined results are presented in local pages of up to 15 items.
+5. In multi-select mode, use Space to toggle results and Enter to confirm the page. Choose next/previous page to continue; selections are accumulated across pages.
+6. Choose **Finish selection** when ready to process the accumulated results.
+7. Duplicate URLs are ignored while preserving selection order, and a single quality choice is applied to the selected batch.
+8. In batch album workflows (album/artist search with `--select`, artist catalog expansion, or multiple supplied URLs), selected albums download all tracks. There is no second per-album track-selection prompt.
+9. A single album URL with `--select` still allows choosing individual tracks.
+10. For artist search with `--select`, each selected artist is expanded into albums and music videos. The configured artist-folder template is resolved per artist so results remain grouped correctly.
 
 Without `--select`, search remains a single-result interactive flow and asks for the quality of the chosen item.
 

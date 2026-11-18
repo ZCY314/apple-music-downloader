@@ -132,7 +132,7 @@ func Main() {
 
 	// In album search batch mode, --select chooses albums; each chosen album
 	// should download all tracks without prompting again for track numbers.
-	r.Flags.BatchSelectAll = r.Flags.Select && search_type == "album"
+	r.Flags.BatchSelectAll = r.Flags.Select && (search_type == "album" || search_type == "artist" || len(args) > 1)
 
 	if search_type != "" {
 		if len(args) == 0 {
@@ -170,6 +170,11 @@ func Main() {
 			continue
 		}
 
+		// Artist catalog expansion is a batch album workflow: selected albums
+		// include every track without a second per-album selection prompt.
+		if r.Flags.Select {
+			r.Flags.BatchSelectAll = true
+		}
 		urlArtistName, urlArtistID, err := r.getUrlArtistName(targetURL, token)
 		if err != nil {
 			fmt.Printf("Failed to get artistname for %s.\n", targetURL)
