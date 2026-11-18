@@ -75,6 +75,7 @@ struct MainView: View {
     @State private var downloadProcess: Process?
     @State private var searchMessage = ""
     @State private var configPath = NSHomeDirectory() + "/Music/AppleMusic/config.yaml"
+    @State private var workspaceArtwork: NSImage?
 
     private let ink = Color(hex: 0x20211F)
     private let paper = Color(hex: 0xF6F6F2)
@@ -144,6 +145,9 @@ struct MainView: View {
             if let data = try? JSONEncoder().encode(newValue) { persistedHistory = data.base64EncodedString() }
         }
         .onAppear {
+            if let artworkURL = Bundle.main.url(forResource: "AutumnLandscape", withExtension: "jpg") {
+                workspaceArtwork = NSImage(contentsOf: artworkURL)
+            }
             if queueURLs.isEmpty && !savedQueue.isEmpty {
                 let legacy = savedQueue.components(separatedBy: .newlines).filter { !$0.isEmpty }
                 if queueJobs.isEmpty { queueJobs = legacy.map { QueueJob(url: $0) } }
@@ -163,11 +167,15 @@ struct MainView: View {
     private var artworkBackdrop: some View {
         GeometryReader { geometry in
             ZStack {
-                Image("AutumnLandscape")
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: geometry.size.width, height: geometry.size.height)
-                    .clipped()
+                if let workspaceArtwork {
+                    Image(nsImage: workspaceArtwork)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .clipped()
+                } else {
+                    Color(hex: 0xE9E3D6)
+                }
 
                 // A warm paper veil keeps the painting present without competing
                 // with catalog artwork, labels, or controls.
