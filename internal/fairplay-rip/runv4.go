@@ -40,21 +40,53 @@ func fetchTemplate(baseURL, adam, uri string) (*temari.Template, error) {
 // streamBody resets an idle timer on every read; when no bytes arrive within
 // timeout the request context is cancelled (download stall detection).
 type streamBody struct {
-	timeout   time.Duration
-	timer     *time.Timer
-	threshold int
-	body      io.Reader
+	timeout      time.Duration
+	timer        *time.Timer
+	threshold    int
+	body         io.Reader
+	total        int64
+	started      time.Time
+	lastPrint    time.Time
+	bytesRead    int64
+	readDuration time.Duration
 }
 
 func (b *streamBody) Read(p []byte) (int, error) {
+	readStarted := time.Now()
 	n, err := b.body.Read(p)
-	if err != nil {
-		return n, err
-	}
+	elapsed := time.Since(readStarted)
+	b.readDuration += elapsed
+	b.bytesRead += int64(n)
 	if n >= b.threshold {
 		b.timer.Reset(b.timeout)
 	}
+	now := time.Now()
+	if now.Sub(b.lastPrint) >= 5*time.Second {
+		b.printProgress(now)
+		b.lastPrint = now
+	}
 	return n, err
+}
+
+func (b *streamBody) printProgress(now time.Time) {
+	wall := now.Sub(b.started)
+	readRate := int64(0)
+	wallRate := int64(0)
+	if b.readDuration > 0 {
+		readRate = int64(float64(b.bytesRead) / b.readDuration.Seconds())
+	}
+	if wall > 0 {
+		wallRate = int64(float64(b.bytesRead) / wall.Seconds())
+	}
+	fmt.Printf("Network receive: %s/%s (%s, %.1f KB/s) · pipeline %.1f KB/s · HTTP-read %.1fs\n",
+		formatBytes(b.bytesRead), formatBytes(b.total), formatBytes(b.bytesRead), float64(readRate)/1024, float64(wallRate)/1024, b.readDuration.Seconds())
+}
+
+func (b *streamBody) printSummary() {
+	if b.started.IsZero() {
+		return
+	}
+	b.printProgress(time.Now())
 }
 
 const downloadIdleTimeout = 30 * time.Second
@@ -80,19 +112,34 @@ func Run(adamId string, playlistUrl string, outfile string, Config config.Config
 	}
 	header := make(http.Header)
 
+	// Measure playlist request phases independently from media-body transfer.
 	req, err := http.NewRequest("GET", playlistUrl, nil)
 	if err != nil {
 		return err
 	}
 	req.Header = header
+	req, playlistTrace := download.TraceRequest(req)
+	playlistStarted := time.Now()
 	do, err := download.Client.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("request media playlist: %w", err)
 	}
-
+	if do.StatusCode < 200 || do.StatusCode >= 300 {
+		_ = do.Body.Close()
+		return fmt.Errorf("media playlist returned HTTP %s", do.Status)
+	}
+	fmt.Printf("HTTP playlist: status=%s headers=%s\n", do.Status, playlistTrace.HeaderLatency())
 	segments, err := parseMediaPlaylist(do.Body)
+	closeErr := do.Body.Close()
 	if err != nil {
-		return err
+		return fmt.Errorf("parse media playlist: %w", err)
+	}
+	if closeErr != nil {
+		fmt.Printf("Warning: close media playlist response: %v\n", closeErr)
+	}
+	fmt.Printf("HTTP playlist timing: %s\n", playlistTrace.Summary(time.Since(playlistStarted)))
+	if len(segments) == 0 {
+		return errors.New("media playlist contains no segments")
 	}
 	segment := segments[0]
 	if segment == nil {
@@ -118,13 +165,18 @@ func Run(adamId string, playlistUrl string, outfile string, Config config.Config
 		return err
 	}
 	req.Header = header
-
+	req, mediaTrace := download.TraceRequest(req)
+	mediaRequestStarted := time.Now()
 	do, err = download.Client.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("request media segment: %w", err)
 	}
 	defer do.Body.Close()
+	if do.StatusCode < 200 || do.StatusCode >= 300 {
+		return fmt.Errorf("media segment returned HTTP %s", do.Status)
+	}
 	totalLen := do.ContentLength
+	fmt.Printf("HTTP media: status=%s content-length=%s headers=%s\n", do.Status, formatBytes(totalLen), mediaTrace.HeaderLatency())
 
 	timer := time.AfterFunc(downloadIdleTimeout, func() { cancel(ErrTimeout) })
 	body := &streamBody{
@@ -132,12 +184,17 @@ func Run(adamId string, playlistUrl string, outfile string, Config config.Config
 		timer:     timer,
 		threshold: 1,
 		body:      do.Body,
+		total:     totalLen,
+		started:   time.Now(),
+		lastPrint: time.Now(),
 	}
+	defer body.printSummary()
+	defer func() { fmt.Printf("HTTP media timing: %s\n", mediaTrace.Summary(time.Since(mediaRequestStarted))) }()
 
 	err = downloadAndDecryptFile(Config.General.LiteServer, body, outfile, adamId, segments, totalLen, Config)
 	timer.Stop()
 	if err != nil {
-		return err
+		return fmt.Errorf("download/decrypt media body: %w", err)
 	}
 	fmt.Print("Decrypted\n")
 	return nil
@@ -636,4 +693,23 @@ func DecryptFragment(frag *mp4.Fragment, tracks map[uint32]mp4.DecryptTrackInfo,
 	}
 
 	return nil
+}
+
+func formatBytes(n int64) string {
+	if n < 0 {
+		return "unknown"
+	}
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	value := float64(n)
+	units := []string{"KB", "MB", "GB", "TB"}
+	for _, suffix := range units {
+		value /= unit
+		if value < unit || suffix == "TB" {
+			return fmt.Sprintf("%.2f %s", value, suffix)
+		}
+	}
+	return fmt.Sprintf("%.2f TB", value)
 }

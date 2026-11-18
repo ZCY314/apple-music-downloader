@@ -134,3 +134,11 @@ Playlist entries are handled as individual songs, not as tracks belonging to one
 ## Desktop 0.1.14
 
 - Increase the interface type scale again after laptop-distance review: navigation, search, cards, queue details, settings and activity text are larger and more readable.
+
+
+## Desktop 0.1.15
+
+- Separate HTTP media-body receive rate from end-to-end pipeline throughput so slow network reads can be distinguished from downstream backpressure.
+- Record DNS, connection, TLS, request-write, time-to-first-byte and connection-reuse diagnostics for Apple media requests.
+- Record equivalent request timing and HTTP status diagnostics for wrapper-lite GET/POST calls without logging signed URLs, headers, credentials or response bodies.
+- Surface media playlist and segment HTTP failures with explicit status context.

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"amdl/internal/download"
 )
@@ -48,6 +49,13 @@ func (c *Client) get(endpoint string) ([]byte, error) {
 		return nil, err
 	}
 
+	req, trace := download.TraceRequest(req)
+	started := time.Now()
+	status := "request-failed"
+	defer func() {
+		fmt.Printf("lite-server GET %s status=%s %s\n", endpointPath(endpoint), status, trace.Summary(time.Since(started)))
+	}()
+
 	client := c.HTTPClient
 	if client == nil {
 		client = download.Client
@@ -61,6 +69,7 @@ func (c *Client) get(endpoint string) ([]byte, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	status = resp.Status
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -113,6 +122,13 @@ func (c *Client) post(endpoint string, reqBody any) ([]byte, error) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	req, trace := download.TraceRequest(req)
+	started := time.Now()
+	status := "request-failed"
+	defer func() {
+		fmt.Printf("lite-server POST %s status=%s %s\n", endpointPath(endpoint), status, trace.Summary(time.Since(started)))
+	}()
+
 	client := c.HTTPClient
 	if client == nil {
 		client = download.Client
@@ -126,6 +142,7 @@ func (c *Client) post(endpoint string, reqBody any) ([]byte, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	status = resp.Status
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
