@@ -35,6 +35,25 @@ jobs:
           go-version: "1.23.1"
           cache: true
 
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -v ./...
+
+      - name: Race detector (Linux)
+        if: runner.os == 'Linux'
+        run: go test -race ./...
+
+      - name: Build
+        run: go build -trimpath ./...
+
+      - name: Set up gofmt toolchain
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.3"
+          cache: false
+
       - name: Check formatting of changed Go files
         shell: bash
         env:
@@ -63,18 +82,6 @@ jobs:
             exit 1
           fi
 
-      - name: Vet
-        run: go vet ./...
-
-      - name: Test
-        run: go test -v ./...
-
-      - name: Race detector (Linux)
-        if: runner.os == 'Linux'
-        run: go test -race ./...
-
-      - name: Build
-        run: go build -trimpath ./...
 
   docker:
     name: Docker build and smoke test
