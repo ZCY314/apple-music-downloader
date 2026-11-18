@@ -194,17 +194,7 @@ func (r *Runner) handleSearch(searchType string, queryParts []string, token stri
 				default:
 					itemIndex := idx - prevOffset
 					if itemIndex >= 0 && itemIndex < len(items) {
-						selectedURL := items[itemIndex].URL
-						alreadySelected := false
-						for _, existingURL := range selectedURLs {
-							if existingURL == selectedURL {
-								alreadySelected = true
-								break
-							}
-						}
-						if !alreadySelected {
-							selectedURLs = append(selectedURLs, selectedURL)
-						}
+						selectedURLs = appendUniqueURL(selectedURLs, items[itemIndex].URL)
 					}
 				}
 			}
@@ -300,3 +290,14 @@ func (r *Runner) handleSearch(searchType string, queryParts []string, token stri
 // END: New functions for search functionality
 
 // CONVERSION FEATURE: Determine if source codec is lossy (rough heuristic by extension/codec name).
+
+
+// appendUniqueURL adds a URL only once while preserving the user's selection order.
+func appendUniqueURL(urls []string, candidate string) []string {
+	for _, existing := range urls {
+		if existing == candidate {
+			return urls
+		}
+	}
+	return append(urls, candidate)
+}
