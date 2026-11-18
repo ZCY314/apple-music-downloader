@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import Security
+import Darwin
 
 @main
 struct AMDLDesktopApp: App {
@@ -77,14 +78,29 @@ enum SecureStore {
     }
 }
 
+struct QueueJob: Codable, Identifiable, Equatable {
+    var id = UUID()
+    var url: String
+    var status: String = "待处理"
+    var attempts: Int = 0
+    var createdAt = Date()
+    var message = ""
+}
+
 struct MainView: View {
     @State private var page: AppPage = .discover
     @State private var searchText = ""
     @State private var searchType = "album"
+    @State private var queueJobs: [QueueJob] = []
+    @State private var historyJobs: [QueueJob] = []
+    @State private var isPaused = false
+    @State private var currentJobID: UUID?
     @State private var results: [CatalogItem] = []
     @State private var selectedIDs: Set<String> = []
     @State private var queueURLs: [String] = []
     @AppStorage("amdl.savedQueue") private var savedQueue = ""
+    @AppStorage("amdl.queueJobs.v2") private var persistedJobs = ""
+    @AppStorage("amdl.history.v2") private var persistedHistory = ""
     @State private var pastedLinks = ""
     @AppStorage("amdl.quality") private var quality = "ALAC"
     @AppStorage("amdl.storefront") private var storefront = "cn"
@@ -97,10 +113,10 @@ struct MainView: View {
     @State private var searchMessage = "CN 中国大陆目录优先"
     @State private var configPath = NSHomeDirectory() + "/Music/AppleMusic/config.yaml"
 
-    private let ink = Color(hex: 0x17211F)
-    private let paper = Color(hex: 0xF4F1E9)
-    private let muted = Color(hex: 0x777F78)
-    private let accent = Color(hex: 0xC7F36B)
+    private let ink = Color(hex: 0x292A25)
+    private let paper = Color(hex: 0xF1EBDD)
+    private let muted = Color(hex: 0x77756B)
+    private let accent = Color(hex: 0xA84F3B)
     private let columns = [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)]
 
     private var validPastedLinks: [String] {
@@ -113,8 +129,11 @@ struct MainView: View {
         HStack(spacing: 0) {
             sidebar
             ZStack {
-                paper
-                VStack(spacing: 0) {
+                ZStack {
+                    if let image = NSImage(contentsOf: Bundle.main.resourceURL?.appendingPathComponent("AutumnLandscape.jpg") ?? URL(fileURLWithPath: "/nonexistent")) {
+                        Image(nsImage: image).resizable().scaledToFill().overlay(paper.opacity(0.78))
+                    } else { paper }
+                    VStack(spacing: 0) {
                     topBar
                     Group {
                         switch page {
@@ -125,18 +144,30 @@ struct MainView: View {
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    }
                 }
             }
         }
         .background(paper)
-        .onChange(of: queueURLs) { newValue in
-            savedQueue = newValue.joined(separator: "\n")
+        .onChange(of: queueURLs) { newValue in savedQueue = newValue.joined(separator: "\n") }
+        .onChange(of: queueJobs) { newValue in
+            if let data = try? JSONEncoder().encode(newValue) { persistedJobs = data.base64EncodedString() }
+        }
+        .onChange(of: historyJobs) { newValue in
+            if let data = try? JSONEncoder().encode(newValue) { persistedHistory = data.base64EncodedString() }
         }
         .onAppear {
             hunyuanKey = SecureStore.read()
             if queueURLs.isEmpty && !savedQueue.isEmpty {
-                queueURLs = savedQueue.components(separatedBy: .newlines).filter { !$0.isEmpty }
+                let legacy = savedQueue.components(separatedBy: .newlines).filter { !$0.isEmpty }
+                if queueJobs.isEmpty { queueJobs = legacy.map { QueueJob(url: $0) } }
+                else { queueURLs = legacy }
+                savedQueue = ""
             }
+            if let data = Data(base64Encoded: persistedJobs), let decoded = try? JSONDecoder().decode([QueueJob].self, from: data) {
+                queueJobs = decoded.map { job in var value = job; if value.status == "下载中" { value.status = "待处理"; value.message = "应用重新启动，等待继续" }; return value }
+            }
+            if let data = Data(base64Encoded: persistedHistory), let decoded = try? JSONDecoder().decode([QueueJob].self, from: data) { historyJobs = decoded }
             if !FileManager.default.fileExists(atPath: configPath) {
                 activity = "尚未找到配置文件。首次运行时，请先检查 ~/Music/AppleMusic/config.yaml。"
             }
@@ -189,7 +220,7 @@ struct MainView: View {
                     Circle().fill(accent).frame(width: 6, height: 6)
                     Text("NATIVE FOR MAC").font(.system(size: 9, weight: .bold)).tracking(1.3)
                 }.foregroundStyle(.white.opacity(0.58))
-                Text("少即是多。\n让音乐回到音乐。")
+                Text("山水入藏。\n音乐归本。")
                     .font(.system(size: 16, weight: .medium, design: .serif))
                     .lineSpacing(4).foregroundStyle(.white.opacity(0.82))
             }
@@ -226,7 +257,7 @@ struct MainView: View {
             HStack(spacing: 10) {
                 HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass").foregroundStyle(muted)
-                    TextField("搜索专辑、歌曲或艺术家", text: $searchText)
+                    TextField("搜索专辑、歌曲、歌单、厂牌或策展人", text: $searchText)
                         .textFieldStyle(.plain).font(.system(size: 15))
                         .onSubmit { Task { await searchCatalog() } }
                     if !searchText.isEmpty {
@@ -240,8 +271,11 @@ struct MainView: View {
                     Text("专辑").tag("album")
                     Text("歌曲").tag("song")
                     Text("艺人").tag("artist")
+                    Text("歌单").tag("playlist")
+                    Text("厂牌").tag("record-labels")
+                    Text("策展人").tag("curators")
                 }
-                .pickerStyle(.segmented).frame(width: 180)
+                .pickerStyle(.menu).frame(width: 125)
                 Button {
                     Task { await searchCatalog() }
                 } label: {
@@ -259,7 +293,7 @@ struct MainView: View {
             HStack(spacing: 8) {
                 Label("CN 优先", systemImage: "globe.asia.australia").font(.system(size: 10, weight: .bold)).foregroundStyle(ink)
                     .padding(.horizontal, 9).padding(.vertical, 6).background(accent.opacity(0.65)).clipShape(Capsule())
-                Text("HK · TW · SG · US 补充目录").font(.system(size: 10, weight: .medium)).foregroundStyle(muted)
+                Text(searchType == "playlist" ? "Playlist 目录：TW · HK · US" : "CN 优先 · HK · TW · SG · US").font(.system(size: 10, weight: .medium)).foregroundStyle(muted)
                 Circle().fill(muted.opacity(0.35)).frame(width: 3, height: 3)
                 Text(useHunyuan && !hunyuanKey.isEmpty ? "混元智能增强已启用" : "Apple Music 原生检索")
                     .font(.system(size: 10, weight: .medium)).foregroundStyle(muted)
@@ -305,7 +339,7 @@ struct MainView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("听见更多，\n收藏更多。")
                         .font(.system(size: 39, weight: .medium, design: .serif)).lineSpacing(1).foregroundStyle(ink)
-                    Text("从一张专辑开始。搜索中文名、英文名、艺人或唱片系列。")
+                    Text("从一张专辑开始。也可以探索歌单、厂牌与策展人。")
                         .font(.system(size: 12)).foregroundStyle(muted).lineSpacing(4)
                     HStack(spacing: 8) {
                         suggestion("邓丽君")
@@ -376,7 +410,7 @@ struct MainView: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
-            Button("加入下载队列") { queueURLs.append(item.url) }
+            Button("加入下载队列") { if !queueJobs.contains(where: { $0.url == item.url }) { queueJobs.append(QueueJob(url: item.url, message: item.name)) } }
             Button("在 Apple Music 中打开") { if let url = URL(string: item.url) { NSWorkspace.shared.open(url) } }
         }
     }
@@ -412,33 +446,44 @@ struct MainView: View {
                 Text("待下载项目").font(.system(size: 18, weight: .medium, design: .serif)).foregroundStyle(ink)
                 Spacer()
                 Text("\(queueURLs.count + validPastedLinks.count) 个链接").font(.system(size: 10, weight: .medium)).foregroundStyle(muted)
-                Button("清空") { queueURLs.removeAll(); pastedLinks = "" }.buttonStyle(.plain).foregroundStyle(muted)
+                Button("清空") { if !isDownloading { queueJobs.removeAll(); queueURLs.removeAll(); pastedLinks = "" } }.buttonStyle(.plain).foregroundStyle(muted)
             }
-            if queueURLs.isEmpty && validPastedLinks.isEmpty {
+            if queueJobs.isEmpty && queueURLs.isEmpty && validPastedLinks.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "tray").font(.system(size: 28, weight: .ultraLight)).foregroundStyle(muted)
                     Text("队列是空的").font(.system(size: 13, weight: .medium, design: .serif)).foregroundStyle(ink)
                     Text("从搜索结果添加，或粘贴链接。").font(.system(size: 10)).foregroundStyle(muted)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity).background(.white.opacity(0.45)).clipShape(RoundedRectangle(cornerRadius: 14))
+                }.frame(maxWidth: .infinity, maxHeight: .infinity).background(.white.opacity(0.42)).clipShape(RoundedRectangle(cornerRadius: 14))
             } else {
-                List {
-                    ForEach(Array(queueURLs.enumerated()), id: \.offset) { index, url in
-                        HStack {
-                            Image(systemName: "music.note").foregroundStyle(muted)
-                            Text(url).font(.system(size: 10, design: .monospaced)).lineLimit(1)
-                            Spacer()
-                            Button { queueURLs.remove(at: index) } label: { Image(systemName: "xmark").foregroundStyle(muted) }.buttonStyle(.plain)
-                        }.listRowBackground(Color.white.opacity(0.55))
+                HStack {
+                    Text("任务").font(.system(size: 17, weight: .medium, design: .serif)).foregroundStyle(ink)
+                    Spacer()
+                    Text("\(queueJobs.filter { $0.status == "完成" }.count) / \(queueJobs.count) 完成").font(.system(size: 10)).foregroundStyle(muted)
+                    if isDownloading && !isPaused {
+                        Button { pauseQueue() } label: { Label("暂停", systemImage: "pause.fill") }.buttonStyle(.bordered)
+                    } else if isPaused {
+                        Button { resumeQueue() } label: { Label("继续", systemImage: "play.fill") }.buttonStyle(.borderedProminent).tint(ink)
                     }
-                    ForEach(Array(validPastedLinks.enumerated()), id: \.offset) { index, url in
-                        HStack {
-                            Image(systemName: "link").foregroundStyle(muted)
-                            Text(url).font(.system(size: 10, design: .monospaced)).lineLimit(1)
-                        }.listRowBackground(Color.white.opacity(0.55))
-                    }
+                    Button { retryFailedJobs() } label: { Label("重试失败", systemImage: "arrow.clockwise") }.buttonStyle(.bordered).disabled(!queueJobs.contains { $0.status == "失败" })
                 }
-                .listStyle(.plain).scrollContentBackground(.hidden)
+                List {
+                    ForEach(queueJobs) { job in
+                        HStack(spacing: 12) {
+                            Image(systemName: job.status == "完成" ? "checkmark.circle.fill" : job.status == "失败" ? "exclamationmark.circle.fill" : job.status == "下载中" ? "arrow.down.circle.fill" : "circle.dashed")
+                                .foregroundStyle(job.status == "失败" ? Color.red : job.status == "完成" ? Color.green : accent)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(URL(string: job.url)?.lastPathComponent ?? job.url).font(.system(size: 11, weight: .medium)).lineLimit(1)
+                                Text(job.message.isEmpty ? job.url : job.message).font(.system(size: 9)).foregroundStyle(muted).lineLimit(1)
+                            }
+                            Spacer()
+                            Text(job.status).font(.system(size: 10, weight: .medium)).foregroundStyle(muted)
+                            if job.status == "失败" {
+                                Button { retryJob(job.id) } label: { Image(systemName: "arrow.clockwise") }.buttonStyle(.plain)
+                            }
+                            Button { removeJob(job.id) } label: { Image(systemName: "xmark").foregroundStyle(muted) }.buttonStyle(.plain)
+                        }.listRowBackground(Color.white.opacity(0.44))
+                    }
+                }.listStyle(.plain).scrollContentBackground(.hidden)
             }
             HStack {
                 VStack(alignment: .leading, spacing: 6) {
@@ -453,11 +498,11 @@ struct MainView: View {
                 Button {
                     startDownload()
                 } label: {
-                    Label(isDownloading ? "正在下载…" : "开始下载", systemImage: "arrow.down.to.line")
+                    Label(isDownloading ? (isPaused ? "已暂停" : "正在下载…") : "加入并开始", systemImage: "arrow.down.to.line")
                         .font(.system(size: 12, weight: .bold)).foregroundStyle(ink)
                         .padding(.horizontal, 22).frame(height: 44).background(accent).clipShape(RoundedRectangle(cornerRadius: 11))
                 }
-                .buttonStyle(.plain).disabled(isDownloading || (queueURLs.isEmpty && validPastedLinks.isEmpty))
+                .buttonStyle(.plain).disabled(isDownloading || (queueURLs.isEmpty && validPastedLinks.isEmpty && !queueJobs.contains(where: { $0.status == "待处理" })))
             }
         }
         .padding(.horizontal, 34).padding(.bottom, 28)
@@ -469,9 +514,10 @@ struct MainView: View {
                 Text("运行日志").font(.system(size: 24, weight: .medium, design: .serif)).foregroundStyle(ink)
                 Spacer()
                 Button("清空记录") { activity = "" }.buttonStyle(.plain).foregroundStyle(muted)
-                if isDownloading {
-                    Button("停止") { downloadProcess?.terminate(); isDownloading = false }
-                        .buttonStyle(.bordered).tint(.red)
+                if isDownloading && !isPaused {
+                    Button("暂停") { pauseQueue() }.buttonStyle(.bordered)
+                } else if isPaused {
+                    Button("恢复") { resumeQueue() }.buttonStyle(.borderedProminent).tint(ink)
                 }
             }
             ScrollView {
@@ -481,8 +527,15 @@ struct MainView: View {
                     .frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled).padding(18)
             }
             .background(.white.opacity(0.8)).clipShape(RoundedRectangle(cornerRadius: 14))
+            if !historyJobs.isEmpty {
+                Text("最近完成 · \(historyJobs.count)").font(.system(size: 15, weight: .medium, design: .serif)).foregroundStyle(ink)
+                ForEach(historyJobs.prefix(8)) { job in
+                    HStack { Text(URL(string: job.url)?.lastPathComponent ?? job.url).lineLimit(1); Spacer(); Text(job.status).foregroundStyle(muted) }
+                        .font(.system(size: 10)).padding(.vertical, 3)
+                }
+            }
             HStack {
-                Label(isDownloading ? "下载进程运行中" : "下载进程空闲", systemImage: isDownloading ? "arrow.down.circle.fill" : "checkmark.circle")
+                Label(isPaused ? "下载已暂停" : (isDownloading ? "下载进程运行中" : "下载进程空闲"), systemImage: isPaused ? "pause.circle.fill" : (isDownloading ? "arrow.down.circle.fill" : "checkmark.circle"))
                     .font(.system(size: 11, weight: .medium)).foregroundStyle(muted)
                 Spacer()
                 Button("打开音乐文件夹") {
@@ -650,15 +703,46 @@ struct MainView: View {
 
     private func addSelectedToQueue() {
         let chosen = results.filter { selectedIDs.contains($0.id) }
-        for item in chosen where !queueURLs.contains(item.url) { queueURLs.append(item.url) }
+        for item in chosen where !queueJobs.contains(where: { $0.url == item.url }) {
+            queueJobs.append(QueueJob(url: item.url, message: item.name))
+        }
         selectedIDs.removeAll()
         page = .queue
     }
 
     private func startDownload() {
         let urls = queueURLs + validPastedLinks
-        guard !urls.isEmpty, !isDownloading else { return }
+        guard (!urls.isEmpty || queueJobs.contains(where: { $0.status == "待处理" })), !isDownloading else { return }
         updateStorefrontConfig()
+        for url in urls {
+            if let existing = queueJobs.firstIndex(where: { $0.url == url }) {
+                if queueJobs[existing].status == "失败" {
+                    queueJobs[existing].status = "待处理"
+                    queueJobs[existing].message = "等待重试"
+                }
+            } else {
+                queueJobs.append(QueueJob(url: url))
+            }
+        }
+        queueURLs.removeAll()
+        pastedLinks = ""
+        isPaused = false
+        startNextJob()
+        page = .queue
+    }
+
+    private func startNextJob() {
+        guard !isPaused, !isDownloading else { return }
+        guard let index = queueJobs.firstIndex(where: { $0.status == "待处理" }) else {
+            isDownloading = false
+            currentJobID = nil
+            return
+        }
+        let job = queueJobs[index]
+        currentJobID = job.id
+        queueJobs[index].status = "下载中"
+        queueJobs[index].attempts += 1
+        isDownloading = true
         let executable = Bundle.main.resourceURL?.appendingPathComponent("amdl")
             ?? URL(fileURLWithPath: NSHomeDirectory() + "/Music/AppleMusic/amdl")
         let task = Process()
@@ -666,7 +750,7 @@ struct MainView: View {
         var args = ["--config", configPath]
         if quality == "ATMOS" { args.append("--atmos") }
         if quality == "AAC" { args.append("--aac") }
-        args.append(contentsOf: urls)
+        args.append(job.url)
         task.executableURL = executable
         task.arguments = args
         task.currentDirectoryURL = URL(fileURLWithPath: NSHomeDirectory() + "/Music/AppleMusic")
@@ -675,28 +759,80 @@ struct MainView: View {
         pipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
             guard !data.isEmpty, let chunk = String(data: data, encoding: .utf8) else { return }
-            DispatchQueue.main.async { activity += chunk }
+            DispatchQueue.main.async {
+                activity += chunk
+                if let idx = queueJobs.firstIndex(where: { $0.id == job.id }) {
+                    queueJobs[idx].message = String(chunk.suffix(140)).trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
         }
         task.terminationHandler = { finished in
             pipe.fileHandleForReading.readabilityHandler = nil
             DispatchQueue.main.async {
-                activity += "\n\n任务结束 · exit \(finished.terminationStatus)"
-                isDownloading = false
+                guard let idx = queueJobs.firstIndex(where: { $0.id == job.id }) else { return }
+                let status = finished.terminationStatus == 0 ? "完成" : "失败"
+                queueJobs[idx].status = status
+                queueJobs[idx].message = status == "完成" ? "已保存到音乐资料库" : "进程退出代码 \(finished.terminationStatus)"
+                historyJobs.insert(queueJobs[idx], at: 0)
+                if historyJobs.count > 100 { historyJobs = Array(historyJobs.prefix(100)) }
+                activity += "\n\n\(status) · exit \(finished.terminationStatus)\n"
                 downloadProcess = nil
-                page = .activity
+                currentJobID = nil
+                isDownloading = false
+                if !isPaused { startNextJob() }
             }
         }
         do {
-            activity += "\n\n开始下载 \(urls.count) 个项目 · \(quality)\n"
-            isDownloading = true
+            activity += "\n\n开始下载 · \(job.url) · \(quality)\n"
             downloadProcess = task
             try task.run()
-            page = .activity
         } catch {
-            activity += "\n启动失败：\(error.localizedDescription)"
+            queueJobs[index].status = "失败"
+            queueJobs[index].message = error.localizedDescription
             isDownloading = false
             downloadProcess = nil
+            activity += "\n启动失败：\(error.localizedDescription)"
+            startNextJob()
         }
+    }
+
+    private func pauseQueue() {
+        guard let process = downloadProcess, process.isRunning else { return }
+        if kill(pid_t(process.processIdentifier), SIGSTOP) == 0 {
+            isPaused = true
+            if let id = currentJobID, let index = queueJobs.firstIndex(where: { $0.id == id }) { queueJobs[index].status = "已暂停" }
+            activity += "\n下载已暂停。"
+        }
+    }
+
+    private func resumeQueue() {
+        guard let process = downloadProcess, process.isRunning else { isPaused = false; startNextJob(); return }
+        if kill(pid_t(process.processIdentifier), SIGCONT) == 0 {
+            isPaused = false
+            if let id = currentJobID, let index = queueJobs.firstIndex(where: { $0.id == id }) { queueJobs[index].status = "下载中" }
+            activity += "\n下载已恢复。"
+        }
+    }
+
+    private func retryJob(_ id: UUID) {
+        guard let index = queueJobs.firstIndex(where: { $0.id == id }), !isDownloading else { return }
+        queueJobs[index].status = "待处理"
+        queueJobs[index].message = "等待重试"
+        startNextJob()
+    }
+
+    private func retryFailedJobs() {
+        guard !isDownloading else { return }
+        for index in queueJobs.indices where queueJobs[index].status == "失败" {
+            queueJobs[index].status = "待处理"
+            queueJobs[index].message = "等待重试"
+        }
+        startNextJob()
+    }
+
+    private func removeJob(_ id: UUID) {
+        guard currentJobID != id else { return }
+        queueJobs.removeAll { $0.id == id }
     }
 
     private func updateStorefrontConfig() {

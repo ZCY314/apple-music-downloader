@@ -1,8 +1,11 @@
 package app
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
+
+	ampapi "amdl/internal/amp-api"
 )
 
 func TestAppendUniqueURL(t *testing.T) {
@@ -108,6 +111,9 @@ func TestSearchStorefronts(t *testing.T) {
 		{name: "album search includes regional catalogs", primary: "cn", searchType: "album", want: []string{"cn", "hk", "tw", "sg", "us"}},
 		{name: "configured regional catalog keeps CN fallback", primary: "HK", searchType: "album", want: []string{"hk", "cn", "tw", "sg", "us"}},
 		{name: "song search stays in configured catalog", primary: "cn", searchType: "song", want: []string{"cn"}},
+		{name: "playlist discovery merges TW HK US", primary: "cn", searchType: "playlist", want: []string{"tw", "hk", "us"}},
+		{name: "curator search includes major catalogs", primary: "cn", searchType: "curators", want: []string{"cn", "hk", "tw", "us"}},
+		{name: "record label search includes major catalogs", primary: "cn", searchType: "record-labels", want: []string{"cn", "hk", "tw", "us"}},
 		{name: "empty storefront defaults safely", primary: "", searchType: "album", want: []string{"cn", "hk", "tw", "sg", "us"}},
 	}
 	for _, tt := range tests {
@@ -117,5 +123,24 @@ func TestSearchStorefronts(t *testing.T) {
 				t.Fatalf("searchStorefronts() = %#v, want %#v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestSearchAPITypes(t *testing.T) {
+	for input, want := range map[string]string{"album": "albums", "song": "songs", "artist": "artists", "playlist": "playlists", "record-labels": "record-labels", "curators": "curators"} {
+		if got := searchAPITypes(input); got != want {
+			t.Errorf("searchAPITypes(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestSearchItemsPlaylist(t *testing.T) {
+	var resp ampapi.SearchResp
+	if err := json.Unmarshal([]byte(`{"results":{"playlists":{"data":[{"id":"pl.test","type":"playlists","attributes":{"name":"Late Night","url":"https://music.apple.com/tw/playlist/late-night/pl.test","curatorName":"Apple Music","artwork":{"url":"https://example.com/art.jpg"},"trackCount":42}}]}}}`), &resp); err != nil {
+		t.Fatal(err)
+	}
+	items := searchItems(&resp, "playlist")
+	if len(items) != 1 || items[0].Name != "Late Night" || items[0].Detail != "Apple Music" || items[0].URL == "" || items[0].Artwork == "" {
+		t.Fatalf("unexpected playlist results: %#v", items)
 	}
 }
