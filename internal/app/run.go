@@ -23,6 +23,7 @@ func Main() {
 	var (
 		configFile  string
 		search_type string
+		exitOnError bool
 	)
 	pflag.StringVarP(&configFile, "config", "c", "", "Path to custom config file (default: config.yaml)")
 	pflag.StringVar(&search_type, "search", "", "Search album, song, artist, playlist, record-labels, or curators")
@@ -32,6 +33,7 @@ func Main() {
 	pflag.BoolVar(&r.Flags.ArtistSelect, "all-album", false, "Download all artist albums")
 	pflag.BoolVar(&r.Flags.Debug, "debug", false, "Enable debug mode to show audio quality information")
 	pflag.BoolVar(&r.Flags.PrintJSON, "json", false, "Output JSON summary at the end")
+	pflag.BoolVar(&exitOnError, "exit-on-error", false, "Exit immediately on download errors (non-interactive mode)")
 	pflag.BoolVar(&r.Flags.JSONSearch, "json-search", false, "Output catalog search results as JSON and exit (use with --search)")
 	pflag.BoolVar(&r.Flags.SaveM3U8, "save-m3u8-playlist", false, "Save M3U8 playlist file")
 	pflag.StringVar(&r.Flags.LiteServerFlag, "lite-server", "", "wrapper-lite HTTP API endpoint for this run")
@@ -103,6 +105,9 @@ func Main() {
 	if err != nil {
 		fmt.Printf("load Config failed: %v\n", err)
 		return
+	}
+	if exitOnError {
+		r.Config.General.ExitOnError = true
 	}
 
 	if !r.Flags.JSONSearch {

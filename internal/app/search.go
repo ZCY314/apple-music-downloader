@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"unicode"
 
 	ampapi "amdl/internal/amp-api"
@@ -243,47 +244,86 @@ func searchAPITypes(searchType string) string {
 
 func (r *Runner) fetchSearchResults(searchType, query, token string) ([]SearchResultItem, error) {
 	queries := buildSearchQueries(query)
+	if len(queries) == 0 {
+		return nil, nil
+	}
 	if (searchType == "playlist" || searchType == "record-labels" || searchType == "curators") && len(queries) > 2 {
 		queries = queries[:2]
 	}
 	storefronts := searchStorefronts(r.Config.General.Storefront, searchType)
-	var results []SearchResultItem
-	var firstErr error
 
-	fetch := func(storefront, searchQuery string) {
-		fmt.Fprintf(os.Stderr, "Searching %s for %q\n", strings.ToUpper(storefront), searchQuery)
+	// The exact phrase is the highest-value request. Query all relevant
+	// storefronts concurrently, but merge in storefront order for stable,
+	// predictable ranking (CN-first where configured).
+	fetchStorefront := func(storefront, searchQuery string) ([]SearchResultItem, error) {
+		var found []SearchResultItem
 		for page := 0; page < searchMaxPages; page++ {
 			resp, err := ampapi.Search(storefront, searchQuery, searchAPITypes(searchType), r.Config.General.Language, token, searchPageSize, page*searchPageSize)
 			if err != nil {
-				if firstErr == nil {
-					firstErr = err
-				}
-				fmt.Fprintf(os.Stderr, "Warning: search pass %q in %s page %d failed: %v\n", searchQuery, strings.ToUpper(storefront), page+1, err)
-				break
+				return found, fmt.Errorf("%s %q page %d: %w", strings.ToUpper(storefront), searchQuery, page+1, err)
 			}
 			for _, item := range searchItems(resp, searchType) {
-				results = appendUniqueSearchItem(results, item)
+				found = appendUniqueSearchItem(found, item)
 			}
 			if !searchHasNext(resp, searchType) {
 				break
 			}
 		}
+		return found, nil
 	}
 
-	// Search the exact phrase in every relevant storefront first. This keeps
-	// high-confidence regional matches ahead of looser token-based matches.
-	for _, storefront := range storefronts {
-		fetch(storefront, queries[0])
+	fetchAcrossRegions := func(searchQuery string) ([]SearchResultItem, []error) {
+		resultsByRegion := make([][]SearchResultItem, len(storefronts))
+		errorsByRegion := make([]error, len(storefronts))
+		var wg sync.WaitGroup
+		for i, storefront := range storefronts {
+			wg.Add(1)
+			go func(index int, region string) {
+				defer wg.Done()
+				fmt.Fprintf(os.Stderr, "Searching %s for %q\n", strings.ToUpper(region), searchQuery)
+				resultsByRegion[index], errorsByRegion[index] = fetchStorefront(region, searchQuery)
+			}(i, storefront)
+		}
+		wg.Wait()
+		var merged []SearchResultItem
+		for _, regional := range resultsByRegion {
+			for _, item := range regional {
+				merged = appendUniqueSearchItem(merged, item)
+			}
+		}
+		var errs []error
+		for _, err := range errorsByRegion {
+			if err != nil {
+				errs = append(errs, err)
+			}
+		}
+		return merged, errs
 	}
-	// Then broaden recall with word-order, token and CJK-fragment variants in
-	// the configured storefront, avoiding an excessive cross-region query fanout.
-	for _, searchQuery := range queries[1:] {
-		for _, storefront := range storefronts {
-			fetch(storefront, searchQuery)
+
+	results, errs := fetchAcrossRegions(queries[0])
+	if len(results) > 0 {
+		return results, nil
+	}
+
+	// Only broaden the query in the preferred storefront after the exact
+	// cross-region pass returns no results. This avoids multiplying every
+	// token/CJK fallback by five regions on the common path.
+	primary := storefronts[0]
+	for _, fallback := range queries[1:] {
+		fmt.Fprintf(os.Stderr, "Retrying %s with a shorter query: %q\n", strings.ToUpper(primary), fallback)
+		found, err := fetchStorefront(primary, fallback)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		for _, item := range found {
+			results = appendUniqueSearchItem(results, item)
+		}
+		if len(results) >= searchPageSize {
+			break
 		}
 	}
-	if len(results) == 0 && firstErr != nil {
-		return nil, fmt.Errorf("all catalog search attempts failed: %w", firstErr)
+	if len(results) == 0 && len(errs) > 0 {
+		return nil, fmt.Errorf("all catalog search attempts failed: %w", errs[0])
 	}
 	return results, nil
 }

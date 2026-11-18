@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import Darwin
+import ImageIO
 
 @main
 struct AMDLDesktopApp: App {
@@ -37,6 +38,67 @@ struct CatalogItem: Decodable, Identifiable, Hashable {
     }
 }
 
+struct SoftPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.975 : 1)
+            .opacity(configuration.isPressed ? 0.88 : 1)
+            .animation(.spring(response: 0.24, dampingFraction: 0.68), value: configuration.isPressed)
+    }
+}
+
+@MainActor
+final class ArtworkStore {
+    static let shared = ArtworkStore()
+    private let cache = NSCache<NSURL, NSImage>()
+
+    func image(for url: URL) async -> NSImage? {
+        let key = url as NSURL
+        if let cached = cache.object(forKey: key) { return cached }
+        do {
+            var request = URLRequest(url: url)
+            request.cachePolicy = .returnCacheDataElseLoad
+            request.timeoutInterval = 12
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard (response as? HTTPURLResponse)?.statusCode == 200,
+                  let source = CGImageSourceCreateWithData(data as CFData, nil),
+                  let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 480,
+                    kCGImageSourceCreateThumbnailWithTransform: true
+                  ] as CFDictionary) else { return nil }
+            let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+            cache.setObject(image, forKey: key)
+            return image
+        } catch {
+            return nil
+        }
+    }
+}
+
+struct CatalogArtwork: View {
+    let url: URL?
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var image: NSImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(nsImage: image).resizable().aspectRatio(contentMode: .fill)
+            } else {
+                Rectangle()
+                    .fill(colorScheme == .dark ? Color.white.opacity(0.055) : Color.black.opacity(0.045))
+                    .overlay(Image(systemName: "waveform").font(.system(size: 30, weight: .ultraLight)).foregroundStyle(.secondary.opacity(0.45)))
+            }
+        }
+        .task(id: url) {
+            image = nil
+            guard let url else { return }
+            image = await ArtworkStore.shared.image(for: url)
+        }
+    }
+}
+
 enum AppPage: String, CaseIterable {
     case discover = "发现"
     case queue = "队列"
@@ -60,13 +122,36 @@ struct QueueJob: Codable, Identifiable, Equatable {
     var attempts: Int = 0
     var createdAt = Date()
     var message = ""
+    var progress: Double?
+    var stage: String?
+    var currentTrack: Int?
+    var totalTracks: Int?
+    var transferred: String?
+    var transferSpeed: String?
+}
+
+final class ProcessOutputBuffer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage = ""
+    func append(_ value: String) {
+        lock.lock()
+        storage += value
+        lock.unlock()
+    }
+    var value: String {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
 }
 
 struct MainView: View {
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage("amdl.appearance") private var appearance = "system"
     @State private var page: AppPage = .discover
+    @State private var isSidebarVisible = true
     @State private var searchText = ""
+    @FocusState private var searchIsFocused: Bool
     @State private var searchType = "album"
     @State private var queueJobs: [QueueJob] = []
     @State private var historyJobs: [QueueJob] = []
@@ -166,7 +251,10 @@ struct MainView: View {
         ZStack {
             artworkBackdrop
             HStack(spacing: 0) {
-                sidebar
+                if isSidebarVisible {
+                    sidebar
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                }
                 VStack(spacing: 0) {
                     topBar
                     Group {
@@ -258,14 +346,14 @@ struct MainView: View {
         } label: {
             HStack(spacing: 13) {
                 Image(systemName: item.symbol)
-                    .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
+                    .font(.system(size: 20, weight: isSelected ? .semibold : .regular))
                     .frame(width: 20)
                 Text(pageTitle(item))
-                    .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
+                    .font(.system(size: 18, weight: isSelected ? .semibold : .medium))
                 Spacer(minLength: 4)
                 if item == .queue && unfinishedJobCount > 0 {
                     Text("\(unfinishedJobCount)")
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .font(.system(size: 15, weight: .medium, design: .monospaced))
                         .foregroundStyle(muted)
                 }
             }
@@ -285,8 +373,8 @@ struct MainView: View {
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                Image(systemName: "waveform").font(.system(size: 21)).foregroundStyle(ink)
-                Text("AMDL").font(.system(size: 17, weight: .semibold)).tracking(0.8).foregroundStyle(ink)
+                Image(systemName: "waveform").font(.system(size: 25)).foregroundStyle(ink)
+                Text("AMDL").font(.system(size: 22, weight: .semibold)).tracking(0.8).foregroundStyle(ink)
             }
             .padding(.horizontal, 22).padding(.top, 34).padding(.bottom, 38)
             VStack(spacing: 5) {
@@ -298,19 +386,32 @@ struct MainView: View {
             Spacer(minLength: 0)
         }
         .frame(width: 202).frame(maxHeight: .infinity, alignment: .topLeading)
-        .background(.regularMaterial)
-        .overlay(alignment: .trailing) { Rectangle().fill(ink.opacity(0.10)).frame(width: 1) }
+        .background(.ultraThinMaterial.opacity(0.62))
+        .overlay(alignment: .trailing) { Rectangle().fill(ink.opacity(0.07)).frame(width: 1) }
         .zIndex(2)
     }
 
     private var topBar: some View {
-        HStack {
+        HStack(spacing: 16) {
+            Button {
+                withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                    isSidebarVisible.toggle()
+                }
+            } label: {
+                Image(systemName: isSidebarVisible ? "sidebar.left" : "sidebar.right")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(ink)
+                    .frame(width: 38, height: 38)
+                    .background(surface, in: RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isSidebarVisible ? tr("隐藏边栏", "Hide sidebar") : tr("显示边栏", "Show sidebar"))
             Text(pageTitle(page))
-                .font(.system(size: 23, weight: .semibold, design: .default)).foregroundStyle(ink)
+                .font(.system(size: 30, weight: .semibold, design: .default)).foregroundStyle(ink)
             Spacer()
             if isDownloading {
                 Text(isPaused ? tr("已暂停", "Paused") : tr("正在下载", "Downloading"))
-                    .font(.system(size: 11, weight: .medium)).foregroundStyle(muted)
+                    .font(.system(size: 16, weight: .medium)).foregroundStyle(muted)
             }
         }
         .padding(.horizontal, 38).padding(.top, 30).padding(.bottom, 22)
@@ -329,7 +430,8 @@ struct MainView: View {
                 HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass").foregroundStyle(muted)
                     TextField(tr("搜索专辑、歌曲、歌单、厂牌或策展人", "Search albums, songs, playlists, labels or curators"), text: $searchText)
-                        .textFieldStyle(.plain).font(.system(size: 15))
+                        .textFieldStyle(.plain).font(.system(size: 22, weight: .regular))
+                        .focused($searchIsFocused)
                         .onSubmit { Task { await searchCatalog() } }
                     if !searchText.isEmpty {
                         Button { searchText = "" } label: { Image(systemName: "xmark") }
@@ -337,8 +439,11 @@ struct MainView: View {
                             .accessibilityLabel(tr("清除搜索", "Clear search"))
                     }
                 }
-                .padding(.horizontal, 14).frame(height: 44)
-                .background(surface).clipShape(RoundedRectangle(cornerRadius: 8))
+                .padding(.horizontal, 17).frame(height: 52)
+                .background(surface).clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(searchIsFocused ? accent.opacity(0.55) : ink.opacity(0.10), lineWidth: searchIsFocused ? 1.3 : 0.8))
+                .shadow(color: searchIsFocused ? accent.opacity(0.10) : .clear, radius: 8, x: 0, y: 2)
+                .animation(.easeOut(duration: 0.18), value: searchIsFocused)
                 Picker(tr("类型", "Type"), selection: $searchType) {
                     Text(tr("专辑", "Albums")).tag("album")
                     Text(tr("歌曲", "Songs")).tag("song")
@@ -347,7 +452,7 @@ struct MainView: View {
                     Text(tr("厂牌", "Record Labels")).tag("record-labels")
                     Text(tr("策展人", "Curators")).tag("curators")
                 }
-                .pickerStyle(.menu).frame(width: 112)
+                .pickerStyle(.menu).font(.system(size: 18, weight: .medium)).frame(width: 124)
                 Button {
                     Task { await searchCatalog() }
                 } label: {
@@ -355,20 +460,20 @@ struct MainView: View {
                         if isSearching { ProgressView().controlSize(.small).tint(paper) }
                         else { Image(systemName: "arrow.right") }
                     }
-                    .font(.system(size: 12, weight: .medium))
-                    .frame(width: 44, height: 44).background(ink).foregroundStyle(paper).clipShape(RoundedRectangle(cornerRadius: 8))
+                    .font(.system(size: 18, weight: .semibold))
+                    .frame(width: 52, height: 52).background(accent).foregroundStyle(.white).clipShape(RoundedRectangle(cornerRadius: 12))
                 }
-                .buttonStyle(.plain).disabled(isSearching || searchText.trimmingCharacters(in: .whitespaces).isEmpty)
+                .buttonStyle(SoftPressStyle()).scaleEffect(isSearching ? 0.97 : 1).animation(.spring(response: 0.24, dampingFraction: 0.72), value: isSearching).disabled(isSearching || searchText.trimmingCharacters(in: .whitespaces).isEmpty)
             }
 
             if !searchMessage.isEmpty {
-                Text(searchMessage).font(.system(size: 10)).foregroundStyle(muted)
+                Text(searchMessage).font(.system(size: 15)).foregroundStyle(muted)
             }
 
             HStack(alignment: .firstTextBaseline) {
                 if !results.isEmpty {
                     Text(tr("结果", "Results"))
-                        .font(.system(size: 18, weight: .medium)).foregroundStyle(ink)
+                        .font(.system(size: 24, weight: .medium)).foregroundStyle(ink)
                 }
                 Spacer()
                 if !selectedIDs.isEmpty {
@@ -376,7 +481,7 @@ struct MainView: View {
                         addSelectedToQueue()
                     } label: {
                         Label(tr("加入队列", "Add to Queue") + " · \(selectedIDs.count)", systemImage: "plus")
-                            .font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
+                            .font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
                             .padding(.horizontal, 13).padding(.vertical, 8).background(accent).clipShape(Capsule())
                     }.buttonStyle(.plain)
                 }
@@ -400,14 +505,8 @@ struct MainView: View {
     }
 
     private var emptyDiscovery: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(searchText.isEmpty ? tr("搜索音乐", "Discover music") : tr("没有找到匹配项", "No matches found"))
-                .font(.system(size: 28, weight: .medium, design: .default)).foregroundStyle(ink)
-            Text(searchText.isEmpty ? tr("搜索专辑、歌曲、艺人或歌单", "Search albums, songs, artists or playlists") : tr("检查拼写，或尝试更短的关键词。", "Check the spelling or try a shorter query."))
-                .font(.system(size: 12)).foregroundStyle(muted)
-        }
-        .frame(maxWidth: .infinity, minHeight: 280, alignment: .leading)
-        .padding(.horizontal, 2)
+        Color.clear.frame(maxWidth: .infinity, minHeight: 280)
+            .accessibilityHidden(true)
     }
 
     private func resultCard(_ item: CatalogItem) -> some View {
@@ -423,33 +522,30 @@ struct MainView: View {
         } label: {
             VStack(alignment: .leading, spacing: 8) {
                 ZStack(alignment: .topTrailing) {
-                    AsyncImage(url: item.imageURL) { image in
-                        image.resizable().aspectRatio(contentMode: .fill)
-                    } placeholder: {
-                        Rectangle().fill(selectedSurface)
-                            .overlay(Image(systemName: "waveform").font(.system(size: 24, weight: .ultraLight)).foregroundStyle(muted.opacity(0.55)))
-                    }
-                    .aspectRatio(1, contentMode: .fit)
-                    .frame(maxWidth: .infinity)
-                    .clipped()
+                    CatalogArtwork(url: item.imageURL)
+                        .aspectRatio(1, contentMode: .fit)
+                        .frame(maxWidth: .infinity)
+                        .clipped()
                     if selected {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 23, weight: .regular))
+                            .font(.system(size: 26, weight: .regular))
                             .symbolRenderingMode(.palette)
                             .foregroundStyle(paper, accent)
                             .padding(9)
                             .transition(.scale.combined(with: .opacity))
                     }
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 3))
+                .clipShape(RoundedRectangle(cornerRadius: 7))
+                .overlay(RoundedRectangle(cornerRadius: 7).stroke(ink.opacity(0.10), lineWidth: 0.8))
+                .shadow(color: Color.black.opacity(isDark ? 0.22 : 0.10), radius: 7, x: 0, y: 3)
                 Text(item.name)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 17, weight: .medium))
                     .foregroundStyle(ink)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(item.detail)
-                    .font(.system(size: 10, weight: .regular))
+                    .font(.system(size: 15, weight: .regular))
                     .foregroundStyle(muted)
                     .lineLimit(1)
                     .multilineTextAlignment(.leading)
@@ -457,7 +553,7 @@ struct MainView: View {
             .contentShape(Rectangle())
             .opacity(selected ? 0.78 : 1)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SoftPressStyle())
         .accessibilityLabel("\(item.name), \(item.detail)")
         .accessibilityHint(item.type == "record-labels" || item.type == "curators" ? tr("打开 Apple Music 页面", "Open Apple Music page") : (selected ? tr("取消选择", "Deselect item") : tr("选择此项目", "Select item")))
         .accessibilityAddTraits(selected ? .isSelected : [])
@@ -474,48 +570,48 @@ struct MainView: View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(tr("下载队列", "Download Queue")).font(.system(size: 22, weight: .semibold)).foregroundStyle(ink)
+                    Text(tr("下载队列", "Download Queue")).font(.system(size: 28, weight: .semibold)).foregroundStyle(ink)
                 }
                 Spacer()
                 Button {
                     if let value = NSPasteboard.general.string(forType: .string) {
                         pastedLinks = [pastedLinks, value].filter { !$0.isEmpty }.joined(separator: "\n")
                     }
-                } label: { Label(tr("粘贴链接", "Paste Links"), systemImage: "doc.on.clipboard").font(.system(size: 11, weight: .semibold)) }
+                } label: { Label(tr("粘贴链接", "Paste Links"), systemImage: "doc.on.clipboard").font(.system(size: 16, weight: .semibold)) }
                     .buttonStyle(.bordered)
             }
             TextEditor(text: $pastedLinks)
-                .font(.system(size: 12, design: .monospaced))
+                .font(.system(size: 17, design: .monospaced))
                 .scrollContentBackground(.hidden)
                 .padding(10).frame(height: 110)
                 .background(panelSurface).clipShape(RoundedRectangle(cornerRadius: 12))
                 .overlay(alignment: .topLeading) {
                     if pastedLinks.isEmpty {
                         Text(tr("粘贴 Apple Music 链接，每行一个……", "Paste Apple Music links, one per line…"))
-                            .font(.system(size: 12)).foregroundStyle(muted.opacity(0.65)).padding(16).allowsHitTesting(false)
+                            .font(.system(size: 17)).foregroundStyle(muted.opacity(0.65)).padding(16).allowsHitTesting(false)
                     }
                 }
             HStack {
-                Text(tr("下载任务", "Downloads")).font(.system(size: 18, weight: .medium)).foregroundStyle(ink)
+                Text(tr("下载任务", "Downloads")).font(.system(size: 24, weight: .medium)).foregroundStyle(ink)
                 Spacer()
-                Text(tr("\(unfinishedJobCount + queueURLs.count + validPastedLinks.count) 个待处理", "\(unfinishedJobCount + queueURLs.count + validPastedLinks.count) pending")).font(.system(size: 10, weight: .medium)).foregroundStyle(muted)
+                Text(tr("\(unfinishedJobCount + queueURLs.count + validPastedLinks.count) 个待处理", "\(unfinishedJobCount + queueURLs.count + validPastedLinks.count) pending")).font(.system(size: 15, weight: .medium)).foregroundStyle(muted)
                 Button(tr("清空", "Clear")) { queueJobs.removeAll(); queueURLs.removeAll(); pastedLinks = "" }.buttonStyle(.plain).foregroundStyle(muted).disabled(isDownloading)
             }
             if invalidPastedLinkCount > 0 {
                 Label(tr("\(invalidPastedLinkCount) 行不是有效的 Apple Music 链接，已忽略。", "\(invalidPastedLinkCount) invalid Apple Music link(s) ignored."), systemImage: "exclamationmark.circle")
-                    .font(.system(size: 10)).foregroundStyle(accent)
+                    .font(.system(size: 15)).foregroundStyle(accent)
             }
             if queueJobs.isEmpty && queueURLs.isEmpty && validPastedLinks.isEmpty {
                 VStack(spacing: 8) {
-                    Image(systemName: "tray").font(.system(size: 28, weight: .ultraLight)).foregroundStyle(muted)
-                    Text(tr("队列是空的", "Your queue is empty")).font(.system(size: 13, weight: .medium)).foregroundStyle(ink)
-                    Text(tr("从搜索结果添加，或粘贴链接。", "Add items from search results or paste links.")).font(.system(size: 10)).foregroundStyle(muted)
+                    Image(systemName: "tray").font(.system(size: 34, weight: .ultraLight)).foregroundStyle(muted)
+                    Text(tr("队列是空的", "Your queue is empty")).font(.system(size: 18, weight: .medium)).foregroundStyle(ink)
+                    Text(tr("从搜索结果添加，或粘贴链接。", "Add items from search results or paste links.")).font(.system(size: 15)).foregroundStyle(muted)
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 HStack {
-                    Text(tr("任务", "Tasks")).font(.system(size: 17, weight: .medium)).foregroundStyle(ink)
+                    Text(tr("任务", "Tasks")).font(.system(size: 22, weight: .medium)).foregroundStyle(ink)
                     Spacer()
-                    Text(tr("\(queueJobs.filter { $0.status == "完成" }.count) / \(queueJobs.count + queueURLs.count + validPastedLinks.count) 完成", "\(queueJobs.filter { $0.status == "完成" }.count) / \(queueJobs.count + queueURLs.count + validPastedLinks.count) completed")).font(.system(size: 10)).foregroundStyle(muted)
+                    Text(tr("\(queueJobs.filter { $0.status == "完成" }.count) / \(queueJobs.count + queueURLs.count + validPastedLinks.count) 完成", "\(queueJobs.filter { $0.status == "完成" }.count) / \(queueJobs.count + queueURLs.count + validPastedLinks.count) completed")).font(.system(size: 15)).foregroundStyle(muted)
                     if isDownloading && !isPaused {
                         Button { pauseQueue() } label: { Label(tr("暂停", "Pause"), systemImage: "pause.fill") }.buttonStyle(.bordered)
                     } else if isPaused {
@@ -529,11 +625,21 @@ struct MainView: View {
                             Image(systemName: job.status == "完成" ? "checkmark.circle.fill" : job.status == "失败" ? "exclamationmark.circle.fill" : job.status == "下载中" ? "arrow.down.circle.fill" : "circle.dashed")
                                 .foregroundStyle(job.status == "失败" ? Color.red : job.status == "完成" ? Color.green : accent)
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(URL(string: job.url)?.lastPathComponent ?? job.url).font(.system(size: 11, weight: .medium)).lineLimit(1)
-                                Text(job.message.isEmpty ? job.url : job.message).font(.system(size: 9)).foregroundStyle(muted).lineLimit(1)
+                                Text(URL(string: job.url)?.lastPathComponent ?? job.url).font(.system(size: 16, weight: .medium)).lineLimit(1)
+                                Text(job.stage ?? (job.message.isEmpty ? job.url : job.message)).font(.system(size: 15)).foregroundStyle(muted).lineLimit(1)
+                                if let progress = job.progress, job.status == "下载中" || job.status == "已暂停" {
+                                    ProgressView(value: progress / 100).tint(accent).frame(maxWidth: 260)
+                                    HStack(spacing: 9) {
+                                        Text(String(format: "%.0f%%", progress))
+                                        if let transferred = job.transferred { Text(transferred) }
+                                        if let speed = job.transferSpeed { Text(speed) }
+                                        if let current = job.currentTrack, let total = job.totalTracks { Text("Track \(current)/\(total)") }
+                                    }
+                                    .font(.system(size: 14, design: .monospaced)).foregroundStyle(muted)
+                                }
                             }
                             Spacer()
-                            Text(displayStatus(job.status)).font(.system(size: 10, weight: .medium)).foregroundStyle(muted)
+                            Text(displayStatus(job.status)).font(.system(size: 15, weight: .medium)).foregroundStyle(muted)
                             if job.status == "失败" {
                                 Button { retryJob(job.id) } label: { Image(systemName: "arrow.clockwise") }.buttonStyle(.plain)
                             }
@@ -545,7 +651,7 @@ struct MainView: View {
             }
             HStack {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(tr("音质", "Audio Quality")).font(.system(size: 10, weight: .bold)).tracking(1.1).foregroundStyle(muted)
+                    Text(tr("音质", "Audio Quality")).font(.system(size: 15, weight: .bold)).tracking(1.1).foregroundStyle(muted)
                     Picker(tr("音质", "Audio Quality"), selection: $quality) {
                         Text(tr("ALAC 无损", "ALAC Lossless")).tag("ALAC")
                         Text("Dolby Atmos").tag("ATMOS")
@@ -557,7 +663,7 @@ struct MainView: View {
                     startDownload()
                 } label: {
                     Label(isDownloading ? (isPaused ? tr("已暂停", "Paused") : tr("正在下载…", "Downloading…")) : tr("开始下载", "Start Download"), systemImage: "arrow.down.to.line")
-                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                        .font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
                         .padding(.horizontal, 22).frame(height: 44).background(accent).clipShape(RoundedRectangle(cornerRadius: 11))
                 }
                 .buttonStyle(.plain).disabled(isDownloading || (queueURLs.isEmpty && validPastedLinks.isEmpty && !queueJobs.contains(where: { $0.status == "待处理" })))
@@ -570,7 +676,7 @@ struct MainView: View {
     private var activityPage: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text(tr("活动记录", "Activity")).font(.system(size: 22, weight: .semibold)).foregroundStyle(ink)
+                Text(tr("活动记录", "Activity")).font(.system(size: 28, weight: .semibold)).foregroundStyle(ink)
                 Spacer()
                 Button(tr("清空记录", "Clear Activity")) { activity = "" }.buttonStyle(.plain).foregroundStyle(muted)
                 if isDownloading && !isPaused {
@@ -581,21 +687,21 @@ struct MainView: View {
             }
             ScrollView {
                 Text(activity.isEmpty ? tr("暂无活动。", "No activity yet.") : activity)
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.system(size: 16, design: .monospaced))
                     .foregroundStyle(ink.opacity(0.85))
                     .frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled).padding(18)
             }
             .background(panelSurface).clipShape(RoundedRectangle(cornerRadius: 14))
             if !historyJobs.isEmpty {
-                Text(tr("最近完成", "Recently Completed") + " · \(historyJobs.count)").font(.system(size: 15, weight: .medium)).foregroundStyle(ink)
+                Text(tr("最近完成", "Recently Completed") + " · \(historyJobs.count)").font(.system(size: 20, weight: .medium)).foregroundStyle(ink)
                 ForEach(historyJobs.prefix(8)) { job in
                     HStack { Text(URL(string: job.url)?.lastPathComponent ?? job.url).lineLimit(1); Spacer(); Text(displayStatus(job.status)).foregroundStyle(muted) }
-                        .font(.system(size: 10)).padding(.vertical, 3)
+                        .font(.system(size: 15)).padding(.vertical, 3)
                 }
             }
             HStack {
                 Label(isPaused ? tr("下载已暂停", "Downloads paused") : (isDownloading ? tr("下载进程运行中", "Download process running") : tr("下载进程空闲", "Download process idle")), systemImage: isPaused ? "pause.circle.fill" : (isDownloading ? "arrow.down.circle.fill" : "checkmark.circle"))
-                    .font(.system(size: 11, weight: .medium)).foregroundStyle(muted)
+                    .font(.system(size: 16, weight: .medium)).foregroundStyle(muted)
                 Spacer()
                 Button(tr("打开音乐文件夹", "Open Music Folder")) {
                     NSWorkspace.shared.open(URL(fileURLWithPath: NSHomeDirectory() + "/Music/AppleMusic"))
@@ -609,8 +715,8 @@ struct MainView: View {
         VStack(alignment: .leading, spacing: 22) {
             HStack {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(tr("外观", "Appearance")).font(.system(size: 13, weight: .semibold)).foregroundStyle(ink)
-                    Text(tr("默认跟随 macOS 外观，也可手动选择。", "Follow macOS appearance by default, or choose manually.")).font(.system(size: 10)).foregroundStyle(muted)
+                    Text(tr("外观", "Appearance")).font(.system(size: 18, weight: .semibold)).foregroundStyle(ink)
+                    Text(tr("默认跟随 macOS 外观，也可手动选择。", "Follow macOS appearance by default, or choose manually.")).font(.system(size: 15)).foregroundStyle(muted)
                 }
                 Spacer()
                 Picker(tr("外观", "Appearance"), selection: $appearance) {
@@ -622,8 +728,8 @@ struct MainView: View {
             Divider()
             HStack {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(tr("界面语言", "Interface Language")).font(.system(size: 13, weight: .semibold)).foregroundStyle(ink)
-                    Text(tr("选择应用显示语言。", "Choose the language used throughout the app.")).font(.system(size: 10)).foregroundStyle(muted)
+                    Text(tr("界面语言", "Interface Language")).font(.system(size: 18, weight: .semibold)).foregroundStyle(ink)
+                    Text(tr("选择应用显示语言。", "Choose the language used throughout the app.")).font(.system(size: 15)).foregroundStyle(muted)
                 }
                 Spacer()
                 Picker(tr("界面语言", "Interface Language"), selection: $language) {
@@ -634,12 +740,12 @@ struct MainView: View {
             }
             Divider()
             VStack(alignment: .leading, spacing: 6) {
-                Text(tr("音乐目录", "Music Library")).font(.system(size: 20, weight: .semibold)).foregroundStyle(ink)
+                Text(tr("音乐目录", "Music Library")).font(.system(size: 26, weight: .semibold)).foregroundStyle(ink)
             }
             HStack {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(tr("首选地区", "Preferred Storefront")).font(.system(size: 11, weight: .semibold)).foregroundStyle(ink)
-                    Text(tr("更改后会写入现有 AMDL 配置。", "Changes are saved to your existing AMDL configuration.")).font(.system(size: 10)).foregroundStyle(muted)
+                    Text(tr("首选地区", "Preferred Storefront")).font(.system(size: 16, weight: .semibold)).foregroundStyle(ink)
+                    Text(tr("更改后会写入现有 AMDL 配置。", "Changes are saved to your existing AMDL configuration.")).font(.system(size: 15)).foregroundStyle(muted)
                 }
                 Spacer()
                 Picker(tr("地区", "Storefront"), selection: $storefront) {
@@ -652,8 +758,8 @@ struct MainView: View {
             }
             Divider()
             VStack(alignment: .leading, spacing: 8) {
-                Text(tr("下载位置", "Download Location")).font(.system(size: 20, weight: .medium)).foregroundStyle(ink)
-                Text(NSHomeDirectory() + "/Music/AppleMusic").font(.system(size: 11, design: .monospaced)).foregroundStyle(muted)
+                Text(tr("下载位置", "Download Location")).font(.system(size: 26, weight: .medium)).foregroundStyle(ink)
+                Text(NSHomeDirectory() + "/Music/AppleMusic").font(.system(size: 16, design: .monospaced)).foregroundStyle(muted)
                 Button(tr("在 Finder 中打开", "Reveal in Finder")) { NSWorkspace.shared.open(URL(fileURLWithPath: NSHomeDirectory() + "/Music/AppleMusic")) }.buttonStyle(.bordered)
             }
             Spacer()
@@ -782,7 +888,8 @@ struct MainView: View {
             ?? URL(fileURLWithPath: NSHomeDirectory() + "/Music/AppleMusic/amdl")
         let task = Process()
         let pipe = Pipe()
-        var args = ["--config", configPath]
+        let outputBuffer = ProcessOutputBuffer()
+        var args = ["--config", configPath, "--exit-on-error", "--json"]
         if quality == "ATMOS" { args.append("--atmos") }
         if quality == "AAC" { args.append("--aac") }
         args.append(job.url)
@@ -794,10 +901,11 @@ struct MainView: View {
         pipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
             guard !data.isEmpty, let chunk = String(data: data, encoding: .utf8) else { return }
+            outputBuffer.append(chunk)
             DispatchQueue.main.async {
                 appendActivity(chunk)
                 if let idx = queueJobs.firstIndex(where: { $0.id == job.id }) {
-                    queueJobs[idx].message = String(chunk.suffix(140)).trimmingCharacters(in: .whitespacesAndNewlines)
+                    updateJobProgress(at: idx, from: chunk)
                 }
             }
         }
@@ -805,9 +913,15 @@ struct MainView: View {
             pipe.fileHandleForReading.readabilityHandler = nil
             DispatchQueue.main.async {
                 guard let idx = queueJobs.firstIndex(where: { $0.id == job.id }) else { return }
-                let status = finished.terminationStatus == 0 ? "完成" : "失败"
+                let summary = Self.downloadSummary(from: outputBuffer.value)
+                let hasSavedTracks = summary.map { !$0.isEmpty } ?? false
+                let status = finished.terminationStatus == 0 && hasSavedTracks ? "完成" : "失败"
                 queueJobs[idx].status = status
-                queueJobs[idx].message = status == "完成" ? "已保存到音乐资料库" : "进程退出代码 \(finished.terminationStatus)"
+                queueJobs[idx].message = status == "完成"
+                    ? tr("已保存 \(summary?.count ?? 0) 首曲目", "Saved \(summary?.count ?? 0) track(s)")
+                    : (finished.terminationStatus != 0
+                        ? tr("下载失败，退出代码 \(finished.terminationStatus)，查看活动记录中的详细错误", "Download failed (exit \(finished.terminationStatus)); inspect Activity for the error")
+                        : tr("没有曲目成功写入；查看活动记录中的 CLI 结果", "No tracks were saved; inspect the CLI result in Activity"))
                 historyJobs.insert(queueJobs[idx], at: 0)
                 if historyJobs.count > 100 { historyJobs = Array(historyJobs.prefix(100)) }
                 appendActivity("\n\n\(status) · exit \(finished.terminationStatus)\n")
@@ -818,7 +932,8 @@ struct MainView: View {
             }
         }
         do {
-            appendActivity("\n\n开始下载 · \(job.url) · \(quality)\n")
+            activity = ""
+            appendActivity("开始下载 · \(job.url) · \(quality)\n")
             downloadProcess = task
             try task.run()
         } catch {
@@ -829,6 +944,43 @@ struct MainView: View {
             appendActivity("\n启动失败：\(error.localizedDescription)")
             startNextJob()
         }
+    }
+
+    private func updateJobProgress(at index: Int, from chunk: String) {
+        let cleaned = chunk.replacingOccurrences(of: "\u{001B}\\[[0-9;]*[A-Za-z]", with: "", options: .regularExpression)
+        let lines = cleaned.components(separatedBy: CharacterSet(charactersIn: "\r\n"))
+        for line in lines where !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let value = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            queueJobs[index].stage = value
+            if let range = value.range(of: #"([0-9]{1,3})%"#, options: .regularExpression),
+               let percent = Double(value[range].dropLast()) {
+                queueJobs[index].progress = min(100, max(0, percent))
+            }
+            if let track = value.range(of: #"Track ([0-9]+) of ([0-9]+)"#, options: .regularExpression) {
+                let numbers = value[track].split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }
+                if numbers.count >= 2 {
+                    queueJobs[index].currentTrack = numbers[0]
+                    queueJobs[index].totalTracks = numbers[1]
+                }
+            }
+            if let open = value.firstIndex(of: "("), let close = value[open...].firstIndex(of: ")") {
+                let metrics = value[value.index(after: open)..<close].split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                if let first = metrics.first { queueJobs[index].transferred = first }
+                if metrics.count > 1 { queueJobs[index].transferSpeed = metrics[1] }
+            }
+            queueJobs[index].message = String(value.suffix(180))
+        }
+    }
+
+    private static func downloadSummary(from output: String) -> [[String: Any]]? {
+        for line in output.components(separatedBy: .newlines).reversed() {
+            let candidate = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard candidate.first == "[", candidate.last == "]",
+                  let data = candidate.data(using: .utf8),
+                  let value = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { continue }
+            return value
+        }
+        return nil
     }
 
     private func pauseQueue() {

@@ -1,18 +1,67 @@
-# Apple Music ALAC / Dolby Atmos Downloader
+# AMDL — Apple Music Library Downloader
 
-[English](./README.md) | [简体中文](./README-CN.md) | [Cloud Server / Proxy Setup](./PROXY-SETUP.md)
+[English](./README.md) · [简体中文](./README-CN.md) · [Cloud / Proxy Setup](./PROXY-SETUP.md)
 
-> **Original script by Sorrow.** Modified with fixes and improvements.
+AMDL is a command-line downloader with an optional **native macOS desktop app**. It searches the Apple Music catalog, resolves album, song and playlist links, and organizes resulting audio files with metadata, artwork and lyrics.
 
-This lightweight macOS native GUI + command-line tool downloads albums, songs, playlists, stations and music videos from Apple Music, preserves or embeds metadata and lyrics, and supports ALAC, AAC and Dolby Atmos. The desktop app uses SwiftUI rather than Electron. Playlist songs are filed under their original albums instead of inheriting playlist artwork. Use it only with content you are entitled to access and in accordance with Apple's terms and applicable law.
+The desktop application is written in SwiftUI, not Electron. The command-line engine remains independently usable on supported platforms.
 
-## AMDL Desktop (macOS)
+> Use only with content you are authorized to access. Apple Music availability, account entitlements, regional catalogues and the separately operated wrapper-lite service can affect individual tasks.
 
-A lightweight native SwiftUI desktop interface with CN-first catalog search, multi-select results, a download queue, and live task activity. Playlist tracks are resolved and filed under their own original albums. See [Desktop documentation](docs/DESKTOP.md).
+## Product surfaces
+
+### AMDL Desktop · macOS
+
+A native workspace for catalog discovery and download supervision:
+
+- Search albums, songs, artists, playlists, record labels and curators.
+- Select catalog results and collect Apple Music links in a persistent queue.
+- Monitor process output, track progress, transfer size and failures.
+- Choose ALAC, AAC or Dolby Atmos where supported by the selected release and configuration.
+- Follow the macOS appearance or choose Light / Dark manually; hide the navigation sidebar when more workspace is needed.
+- Playlist tracks are filed under their original albums, with their own metadata and artwork.
+
+See [Desktop documentation](docs/DESKTOP.md).
+
+### AMDL CLI
+
+The CLI is the underlying engine and can be used without the desktop app. It supports album, song, playlist, artist, station and music-video workflows, configuration-driven paths and metadata, and optional post-download processing.
+
+For unattended use, **--exit-on-error** makes a failed run return a non-zero exit code instead of waiting for interactive terminal input. **--json** emits the list of tracks actually added to the library; an empty list is not a successful download.
+
+## Capabilities
+
+- Catalog search with regional storefront handling and deduplicated results.
+- ALAC, AAC-family and Dolby Atmos formats, subject to catalog and account availability.
+- Album and playlist processing, with playlist songs organized by their original album.
+- Embedded or sidecar artwork and lyrics, according to configuration.
+- Streaming media processing for large files.
+- Native macOS queue, activity log, appearance and language preferences.
+
+## Supported formats
+
+| Format | Apple Music media trait | Notes |
+|---|---|---|
+| alac | audio-alac-stereo | Lossless |
+| ec3 | audio-atmos / audio-ec3 | Dolby Atmos |
+| aac | audio-stereo | AAC |
+| aac-lc | audio-stereo | AAC-LC fallback path |
+| aac-binaural | audio-stereo-binaural | Binaural |
+| aac-downmix | audio-stereo-downmix | Stereo downmix |
+| MV | Music video | Requires configured service |
+
+## Requirements
+
+1. **wrapper-lite** — [WorldObservationLog/wrapper · lite branch](https://github.com/WorldObservationLog/wrapper/tree/lite). This is a separate service. Start it and set its HTTP endpoint under general.lite-server in config.yaml (for example, http://127.0.0.1:12340).
+2. **ffmpeg** (optional) — needed only for configured conversion or ffmpeg-dependent artwork features.
+3. **Go 1.23.1+** — required only when building from source. Precompiled releases do not require Go.
+
+The wrapper-lite /status endpoint reports service regions. A response such as regions: [cn] confirms that the service responds to /status; it does **not** prove that a particular Apple Music item can be resolved or processed. For a failed task, inspect the actual error emitted by the CLI and the wrapper service rather than treating a moving progress bar or /status response as proof of success.
 
 ## Contents
 
-- [Features](#features)
+- [Product surfaces](#product-surfaces)
+- [Capabilities](#capabilities)
 - [Supported formats](#supported-formats)
 - [Requirements](#requirements)
 - [Quick Start](#quick-start)
@@ -28,38 +77,6 @@ A lightweight native SwiftUI desktop interface with CN-first catalog search, mul
 - [Get media-user-token](#get-media-user-token)
 - [Lyrics options](#lyrics-options)
 - [Credits](#credits)
-
-## Features
-
-1. Inline cover art and LRC lyrics.
-2. Word-by-word and unsynchronized lyrics.
-3. Artist album downloads.
-4. Streaming download and decryption for large files.
-5. Music-video downloads using in-process mp4ff decryption.
-6. Interactive search and track selection.
-
-## Supported formats
-
-| Format | Description | Requires subscription |
-|---|---|---|
-| `alac` | `audio-alac-stereo` | Yes |
-| `ec3` | `audio-atmos` / `audio-ec3` | Yes |
-| `aac` | `audio-stereo` | Yes |
-| `aac-lc` | `audio-stereo` | Yes |
-| `aac-binaural` | `audio-stereo-binaural` | Yes |
-| `aac-downmix` | `audio-stereo-downmix` | Yes |
-| `MV` | Music video | Yes |
-
-Stations require a valid `media-user-token` from an active subscription.
-
-## Requirements
-
-Install and prepare these before running the downloader:
-
-1. **wrapper-lite**: [github.com/WorldObservationLog/wrapper/tree/lite](https://github.com/WorldObservationLog/wrapper/tree/lite). Required backend decryption service. Start it before using this downloader and set its HTTP endpoint in `lite-server`, for example `http://127.0.0.1:12340`.
-2. **ffmpeg** (Optional): Required only for post-download conversion, animated artwork, or `ffmpeg`-dependent features. See [ffmpeg.org](https://ffmpeg.org/).
-
-> **Note**: If you are using the precompiled release binaries, **Go is NOT required**. Go (1.23.1+) is only needed if you build from source (see [For Developers](#for-developers)).
 
 ## Quick Start
 

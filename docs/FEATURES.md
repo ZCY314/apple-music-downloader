@@ -119,3 +119,18 @@ Playlist entries are handled as individual songs, not as tracks belonging to one
 - Remove the detached opaque sidebar treatment; use native macOS material so the navigation sits naturally over the bundled painting.
 - Add System, Light and Dark appearance preferences, defaulting to macOS System appearance.
 - Adapt primary text, secondary text, selected navigation, controls and workspace surfaces to the active color scheme while preserving the painting's color.
+
+
+## Desktop 0.1.13
+
+- Remove the empty-discovery promotional heading and helper sentence; keep the workspace quiet until results exist.
+- Add an animated, hideable navigation sidebar and increase the interface type scale.
+- Refine the search field, action button, translucent surfaces and album-cover focal treatment around the original painting.
+- Cache and downsample catalog artwork to reduce repeat network work and image-decoding cost.
+- Search the exact phrase across configured storefronts concurrently, preserving deterministic region priority; only run token fallbacks when the exact regional pass returns no results.
+- Make GUI downloads non-interactive, capture structured CLI summaries, distinguish zero-track runs from success, and show parsed track/byte/speed progress when emitted by the CLI.
+
+
+## Desktop 0.1.14
+
+- Increase the interface type scale again after laptop-distance review: navigation, search, cards, queue details, settings and activity text are larger and more readable.

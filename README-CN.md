@@ -1,18 +1,67 @@
-# Apple Music ALAC / 杜比全景声下载器
+# AMDL — Apple Music 音乐资料库下载工具
 
-[English](./README.md) | [简体中文](./README-CN.md) | [云服务器 / 代理配置](./PROXY-SETUP.md)
+[English](./README.md) · [简体中文](./README-CN.md) · [云服务器 / 代理配置](./PROXY-SETUP.md)
 
-> **原脚本由 Sorrow 编写。** 本仓库已修改并包含修复与改进。
+AMDL 是一套命令行下载工具，并提供**原生 macOS 桌面应用**。它可以检索 Apple Music 曲库、解析专辑/歌曲/歌单链接，并按配置整理音频文件、元数据、封面与歌词。
 
-这是一个轻量 macOS 原生 GUI + 命令行工具，可从 Apple Music 下载专辑、单曲、播放列表、电台和音乐视频，支持 ALAC、AAC 和杜比全景声，并能保留或嵌入元数据与歌词。桌面版使用 SwiftUI，不依赖 Electron。播放列表中的歌曲会按其原始专辑归档，而不是套用播放列表封面。请仅用于你有权访问的内容，并遵守 Apple 条款和适用法律。
+桌面应用使用 SwiftUI 编写，不是 Electron 套壳。命令行引擎也可以独立运行于受支持的平台。
 
-## AMDL Desktop（macOS）
+> 请仅处理你有权访问的内容。单项任务是否可用，可能受到 Apple Music 曲库、账户权限、地区目录以及独立运行的 wrapper-lite 服务影响。
 
-提供轻量原生 SwiftUI 桌面界面：CN 优先检索、搜索结果多选、下载队列与实时任务记录。Playlist 按歌曲逐首解析，并归档到每首歌自己的原始专辑目录。详见 [桌面版说明](docs/DESKTOP.md)。
+## 产品形态
+
+### AMDL Desktop · macOS
+
+用于曲库发现和下载监督的原生桌面工作区：
+
+- 搜索专辑、歌曲、艺人、歌单、唱片厂牌与策展人。
+- 多选搜索结果，将 Apple Music 链接加入持久化下载队列。
+- 查看进程输出、曲目进度、传输大小与失败原因。
+- 在曲目版本和配置支持的范围内选择 ALAC、AAC 或 Dolby Atmos。
+- 跟随 macOS 外观，或手动选择浅色/深色；需要更大工作区时可隐藏边栏。
+- 歌单中的歌曲按各自原始专辑归档，并保留对应元数据与封面。
+
+详见[桌面版文档](docs/DESKTOP.md)。
+
+### AMDL CLI
+
+命令行是底层引擎，可脱离桌面应用独立使用。支持专辑、单曲、歌单、艺人、电台和音乐视频相关流程，并通过配置管理保存路径、元数据和可选的后处理。
+
+无人值守运行时，可使用 **--exit-on-error**：任务出错后返回非零退出码，不再等待交互式终端输入。**--json** 会输出实际加入资料库的曲目列表；空列表不代表下载成功。
+
+## 功能
+
+- Apple Music 曲库检索、地区目录处理与结果去重。
+- ALAC、AAC 系列和 Dolby Atmos，具体取决于曲库与账户权限。
+- 专辑与歌单处理；歌单歌曲按其原始专辑整理。
+- 按配置嵌入封面/歌词，或保存为独立文件。
+- 面向大文件的流式媒体处理。
+- 原生 macOS 队列、活动日志、外观和语言设置。
+
+## 支持的格式
+
+| 格式 | Apple Music media trait | 说明 |
+|---|---|---|
+| alac | audio-alac-stereo | 无损 |
+| ec3 | audio-atmos / audio-ec3 | Dolby Atmos |
+| aac | audio-stereo | AAC |
+| aac-lc | audio-stereo | AAC-LC 回退路径 |
+| aac-binaural | audio-stereo-binaural | 双耳音频 |
+| aac-downmix | audio-stereo-downmix | 立体声混音 |
+| MV | Music video | 需要配置服务 |
+
+## 前置要求
+
+1. **wrapper-lite** — [WorldObservationLog/wrapper · lite 分支](https://github.com/WorldObservationLog/wrapper/tree/lite)。这是独立运行的服务。请先启动，并在 config.yaml 的 general.lite-server 中填写 HTTP 地址，例如 http://127.0.0.1:12340。
+2. **ffmpeg**（可选）— 仅在启用格式转换或依赖 ffmpeg 的封面功能时需要。
+3. **Go 1.23.1+** — 仅从源码构建时需要。使用预编译 Release 无需安装 Go。
+
+wrapper-lite 的 /status 接口用于报告服务地区。返回 regions: [cn] 只能说明服务能响应 /status，**不能证明某一首 Apple Music 曲目一定能被解析或处理**。任务失败时，应检查 CLI 输出的具体错误及 wrapper 服务日志，不能把进度条在移动或 /status 有响应当成成功证明。
 
 ## 目录
 
-- [功能特性](#功能特性)
+- [产品形态](#产品形态)
+- [功能](#功能)
 - [支持的格式](#支持的格式)
 - [前置要求](#前置要求)
 - [快速开始](#快速开始)
@@ -28,38 +77,6 @@
 - [获取 media-user-token](#获取-media-user-token)
 - [歌词设置](#歌词设置)
 - [致谢](#致谢)
-
-## 功能特性
-
-1. 内嵌封面和 LRC 歌词。
-2. 逐词歌词和未同步歌词。
-3. 歌手全部专辑下载。
-4. 大文件流式下载和解密。
-5. 音乐视频下载，使用进程内 mp4ff 解密。
-6. 交互式搜索和曲目选择。
-
-## 支持的格式
-
-| 格式 | 描述 | 需要订阅 |
-|---|---|---|
-| `alac` | `audio-alac-stereo` | 是 |
-| `ec3` | `audio-atmos` / `audio-ec3` | 是 |
-| `aac` | `audio-stereo` | 是 |
-| `aac-lc` | `audio-stereo` | 是 |
-| `aac-binaural` | `audio-stereo-binaural` | 是 |
-| `aac-downmix` | `audio-stereo-downmix` | 是 |
-| `MV` | 音乐视频 | 是 |
-
-下载电台需要来自有效订阅的 `media-user-token`。
-
-## 前置要求
-
-运行前必须准备：
-
-1. **wrapper-lite**：[github.com/WorldObservationLog/wrapper/tree/lite](https://github.com/WorldObservationLog/wrapper/tree/lite)。必需的后端解密服务。必须先启动它，并在 `lite-server` 中写入其 HTTP 地址，例如 `http://127.0.0.1:12340`。
-2. **ffmpeg**（可选）：仅在后下载转换、动态封面或依赖 ffmpeg 的功能中需要。见 [ffmpeg.org](https://ffmpeg.org/)。
-
-> **提示**：直接使用 Release 预编译二进制文件**不需要安装 Go**。只有自行从源码编译时才需要 Go 1.23.1+（见 [开发者指南](#开发者指南)）。
 
 ## 快速开始
 
