@@ -69,7 +69,6 @@ Playlist entries are handled as individual songs, not as tracks belonging to one
 
 - Native Intel macOS SwiftUI app with a focused search, download queue, activity log and preferences UI.
 - CN-first Apple Music catalog search with HK/TW/SG/US fallbacks and deduplicated results.
-- Optional Tencent Hunyuan search enhancement proposes alternate catalog query phrases; Apple Music remains the source of truth.
 - Playlist tracks are resolved individually and saved with their original album metadata and artwork.
 
 ## Desktop 0.1.6
@@ -78,3 +77,9 @@ Playlist entries are handled as individual songs, not as tracks belonging to one
 - Playlist discovery merges TW, HK and US catalogues; playlist tracks are resolved against CN by shared catalog ID first, then exact title/artist search, with source-storefront fallback when CN has no exact match.
 - The native macOS queue persists individual jobs and history, supports pause/resume, retry per failed item, retry all failed items and removal of queued jobs.
 - The supplied Qing Hongwu autumn landscape artwork is bundled as a low-contrast ambient interface background.
+
+## Desktop 0.1.7
+
+- Removed the Tencent Hunyuan integration and its API-key settings. Search now queries the Apple Music catalog directly.
+- Simplified navigation, page headings and the discovery empty state; removed promotional labels, slogans and decorative feature callouts.
+- Kept the controls that directly support finding, organizing and downloading music.

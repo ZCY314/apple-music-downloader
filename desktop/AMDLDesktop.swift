@@ -1,6 +1,5 @@
 import SwiftUI
 import AppKit
-import Security
 import Darwin
 
 @main
@@ -30,9 +29,9 @@ struct CatalogItem: Decodable, Identifiable, Hashable {
 
 enum AppPage: String, CaseIterable {
     case discover = "发现"
-    case queue = "下载队列"
-    case activity = "任务记录"
-    case settings = "偏好设置"
+    case queue = "队列"
+    case activity = "记录"
+    case settings = "设置"
 
     var symbol: String {
         switch self {
@@ -40,40 +39,6 @@ enum AppPage: String, CaseIterable {
         case .queue: return "square.stack.3d.up"
         case .activity: return "waveform.path"
         case .settings: return "slider.horizontal.3"
-        }
-    }
-}
-
-enum SecureStore {
-    private static let service = "org.zcy314.amdl.hunyuan"
-    static func read() -> String {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: "api-key",
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-              let data = item as? Data else { return "" }
-        return String(data: data, encoding: .utf8) ?? ""
-    }
-    static func save(_ value: String) {
-        let key = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: "api-key"
-        ] as [String: Any]
-        if value.isEmpty {
-            SecItemDelete(key as CFDictionary)
-            return
-        }
-        let update = [kSecValueData as String: Data(value.utf8)]
-        if SecItemUpdate(key as CFDictionary, update as CFDictionary) == errSecItemNotFound {
-            var insert = key
-            insert[kSecValueData as String] = Data(value.utf8)
-            SecItemAdd(insert as CFDictionary, nil)
         }
     }
 }
@@ -104,13 +69,11 @@ struct MainView: View {
     @State private var pastedLinks = ""
     @AppStorage("amdl.quality") private var quality = "ALAC"
     @AppStorage("amdl.storefront") private var storefront = "cn"
-    @AppStorage("amdl.useHunyuan") private var useHunyuan = true
-    @State private var hunyuanKey = ""
     @State private var isSearching = false
     @State private var isDownloading = false
     @State private var activity = "准备就绪。\n\n在「发现」中搜索音乐，或把 Apple Music 链接粘贴到下载队列。"
     @State private var downloadProcess: Process?
-    @State private var searchMessage = "CN 中国大陆目录优先"
+    @State private var searchMessage = ""
     @State private var configPath = NSHomeDirectory() + "/Music/AppleMusic/config.yaml"
 
     private let ink = Color(hex: 0x292A25)
@@ -161,7 +124,6 @@ struct MainView: View {
             if let data = try? JSONEncoder().encode(newValue) { persistedHistory = data.base64EncodedString() }
         }
         .onAppear {
-            hunyuanKey = SecureStore.read()
             if queueURLs.isEmpty && !savedQueue.isEmpty {
                 let legacy = savedQueue.components(separatedBy: .newlines).filter { !$0.isEmpty }
                 if queueJobs.isEmpty { queueJobs = legacy.map { QueueJob(url: $0) } }
@@ -187,13 +149,10 @@ struct MainView: View {
                 }
                 VStack(alignment: .leading, spacing: 1) {
                     Text("AMDL").font(.system(size: 17, weight: .black, design: .rounded)).tracking(1.4)
-                    Text("MUSIC ARCHIVE").font(.system(size: 8, weight: .bold, design: .rounded)).tracking(2.1).foregroundStyle(.white.opacity(0.45))
                 }.foregroundStyle(.white)
             }
             .padding(.horizontal, 22).padding(.top, 34).padding(.bottom, 52)
 
-            Text("工作空间").font(.system(size: 10, weight: .bold)).tracking(1.8).foregroundStyle(.white.opacity(0.36))
-                .padding(.horizontal, 24).padding(.bottom, 13)
             VStack(spacing: 6) {
                 ForEach(AppPage.allCases, id: \.self) { item in
                     Button {
@@ -219,16 +178,6 @@ struct MainView: View {
                 }
             }
             Spacer()
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 7) {
-                    Circle().fill(accent).frame(width: 6, height: 6)
-                    Text("NATIVE FOR MAC").font(.system(size: 9, weight: .bold)).tracking(1.3)
-                }.foregroundStyle(.white.opacity(0.58))
-                Text("山水入藏。\n音乐归本。")
-                    .font(.system(size: 16, weight: .medium, design: .serif))
-                    .lineSpacing(4).foregroundStyle(.white.opacity(0.82))
-            }
-            .padding(22).frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(width: 218)
         .background(ink)
@@ -236,21 +185,13 @@ struct MainView: View {
 
     private var topBar: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("AMDL  /  \(page.rawValue)")
-                    .font(.system(size: 10, weight: .bold)).tracking(1.5).foregroundStyle(muted)
-                Text(page == .discover ? "把想听的，带回自己的收藏。" :
-                     page == .queue ? "整理好，再一次下载。" :
-                     page == .activity ? "每一次下载，都有迹可循。" : "只设置一次，其余交给 AMDL。")
-                    .font(.system(size: 23, weight: .medium, design: .serif)).foregroundStyle(ink)
-            }
+            Text(page.rawValue)
+                .font(.system(size: 25, weight: .medium, design: .serif)).foregroundStyle(ink)
             Spacer()
-            HStack(spacing: 7) {
-                Circle().fill(isDownloading ? Color.orange : Color(hex: 0x76A95C)).frame(width: 7, height: 7)
-                Text(isDownloading ? "正在下载" : "系统就绪").font(.system(size: 11, weight: .medium)).foregroundStyle(muted)
+            if isDownloading {
+                Text(isPaused ? "已暂停" : "正在下载")
+                    .font(.system(size: 11, weight: .medium)).foregroundStyle(muted)
             }
-            .padding(.horizontal, 12).padding(.vertical, 8)
-            .background(.white.opacity(0.7)).clipShape(Capsule())
         }
         .padding(.horizontal, 34).padding(.top, 27).padding(.bottom, 24)
         .background(paper)
@@ -294,15 +235,8 @@ struct MainView: View {
                 .buttonStyle(.plain).disabled(isSearching || searchText.trimmingCharacters(in: .whitespaces).isEmpty)
             }
 
-            HStack(spacing: 8) {
-                Label("CN 优先", systemImage: "globe.asia.australia").font(.system(size: 10, weight: .bold)).foregroundStyle(ink)
-                    .padding(.horizontal, 9).padding(.vertical, 6).background(accent.opacity(0.65)).clipShape(Capsule())
-                Text(searchType == "playlist" ? "Playlist 目录：TW · HK · US" : "CN 优先 · HK · TW · SG · US").font(.system(size: 10, weight: .medium)).foregroundStyle(muted)
-                Circle().fill(muted.opacity(0.35)).frame(width: 3, height: 3)
-                Text(useHunyuan && !hunyuanKey.isEmpty ? "混元智能增强已启用" : "Apple Music 原生检索")
-                    .font(.system(size: 10, weight: .medium)).foregroundStyle(muted)
-                Spacer()
-                Text(searchMessage).font(.system(size: 10, weight: .medium)).foregroundStyle(muted)
+            if !searchMessage.isEmpty {
+                Text(searchMessage).font(.system(size: 10)).foregroundStyle(muted)
             }
 
             HStack(alignment: .firstTextBaseline) {
@@ -338,52 +272,14 @@ struct MainView: View {
     }
 
     private var emptyDiscovery: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 18) {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("听见更多，\n收藏更多。")
-                        .font(.system(size: 39, weight: .medium, design: .serif)).lineSpacing(1).foregroundStyle(ink)
-                    Text("从一张专辑开始。也可以探索歌单、厂牌与策展人。")
-                        .font(.system(size: 12)).foregroundStyle(muted).lineSpacing(4)
-                    HStack(spacing: 8) {
-                        suggestion("邓丽君")
-                        suggestion("百代百年系列")
-                        suggestion("Denon Mastersonic")
-                    }.padding(.top, 4)
-                }
-                Spacer()
-                ZStack {
-                    Circle().fill(Color(hex: 0xE7E4D9)).frame(width: 170, height: 170)
-                    Circle().stroke(ink.opacity(0.09), lineWidth: 1).frame(width: 138, height: 138)
-                    Image(systemName: "record.circle").font(.system(size: 105, weight: .ultraLight)).foregroundStyle(ink.opacity(0.8))
-                    Circle().fill(accent).frame(width: 14, height: 14)
-                }.padding(.trailing, 34)
-            }
-            .padding(26).frame(maxWidth: .infinity, minHeight: 220, alignment: .leading)
-            .background(Color(hex: 0xEAE7DC)).clipShape(RoundedRectangle(cornerRadius: 18))
-            HStack(spacing: 14) {
-                featureTile("01", "逐曲归档", "歌单里的每首歌回到原专辑")
-                featureTile("02", "无损优先", "ALAC、Atmos 与 AAC")
-                featureTile("03", "本地收藏", "封面、曲目信息与歌词")
-            }
+        VStack(alignment: .leading, spacing: 10) {
+            Text("搜索音乐")
+                .font(.system(size: 32, weight: .medium, design: .serif)).foregroundStyle(ink)
+            Text("输入专辑、歌曲、艺人或歌单名称。")
+                .font(.system(size: 12)).foregroundStyle(muted)
         }
-    }
-
-    private func suggestion(_ value: String) -> some View {
-        Button(value) { searchText = value; Task { await searchCatalog() } }
-            .font(.system(size: 10, weight: .medium)).foregroundStyle(ink)
-            .padding(.horizontal, 10).padding(.vertical, 7)
-            .background(.white.opacity(0.72)).clipShape(Capsule()).buttonStyle(.plain)
-    }
-
-    private func featureTile(_ number: String, _ title: String, _ subtitle: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(number).font(.system(size: 10, weight: .bold, design: .rounded)).foregroundStyle(Color(hex: 0x82916D))
-            Text(title).font(.system(size: 15, weight: .medium, design: .serif)).foregroundStyle(ink)
-            Text(subtitle).font(.system(size: 10)).foregroundStyle(muted)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading).padding(15)
-        .background(.white.opacity(0.72)).clipShape(RoundedRectangle(cornerRadius: 12))
+        .frame(maxWidth: .infinity, minHeight: 250, alignment: .leading)
+        .padding(.horizontal, 8)
     }
 
     private func resultCard(_ item: CatalogItem) -> some View {
@@ -575,28 +471,12 @@ struct MainView: View {
                 }.frame(width: 220)
             }
             Divider()
-            VStack(alignment: .leading, spacing: 10) {
-                Text("混元智能检索").font(.system(size: 20, weight: .medium, design: .serif)).foregroundStyle(ink)
-                Text("使用腾讯混元联网增强，为模糊歌名、中文系列名和别名生成更好的检索词；最终结果仍由 Apple Music 目录核验。").font(.system(size: 11)).foregroundStyle(muted).lineSpacing(4)
-                Toggle("启用混元搜索增强", isOn: $useHunyuan).toggleStyle(.switch).font(.system(size: 12, weight: .medium))
-                SecureField("腾讯混元 API Key（保存在 macOS 钥匙串）", text: $hunyuanKey)
-                    .textFieldStyle(.roundedBorder).frame(maxWidth: 480)
-                HStack {
-                    Button("安全保存密钥") { SecureStore.save(hunyuanKey); activity += "\n混元 API Key 已保存到钥匙串。" }
-                        .buttonStyle(.borderedProminent).tint(ink)
-                    Text(hunyuanKey.isEmpty ? "尚未配置密钥：仍可使用原生目录检索。" : "密钥已填写；保存后启用增强检索。")
-                        .font(.system(size: 10)).foregroundStyle(muted)
-                }
-            }
-            Divider()
             VStack(alignment: .leading, spacing: 8) {
                 Text("下载位置").font(.system(size: 20, weight: .medium, design: .serif)).foregroundStyle(ink)
                 Text(NSHomeDirectory() + "/Music/AppleMusic").font(.system(size: 11, design: .monospaced)).foregroundStyle(muted)
                 Button("在 Finder 中打开") { NSWorkspace.shared.open(URL(fileURLWithPath: NSHomeDirectory() + "/Music/AppleMusic")) }.buttonStyle(.bordered)
             }
             Spacer()
-            Text("AMDL Desktop · 原生 SwiftUI · 无 Electron · 无后台常驻服务")
-                .font(.system(size: 10)).foregroundStyle(muted)
         }
         .padding(.horizontal, 34).padding(.bottom, 28)
         .onChange(of: storefront) { _ in updateStorefrontConfig() }
@@ -609,73 +489,22 @@ struct MainView: View {
         isSearching = true
         selectedIDs.removeAll()
         results.removeAll()
-        searchMessage = "正在连接 Apple Music 目录…"
+        searchMessage = ""
         defer { isSearching = false }
         do {
-            var queries = [query]
-            var usedHunyuan = false
-            if useHunyuan && !hunyuanKey.isEmpty {
-                do {
-                    let expanded = try await hunyuanQueries(for: query)
-                    let alternatives = expanded.filter { $0.caseInsensitiveCompare(query) != .orderedSame }.prefix(2)
-                    queries.append(contentsOf: alternatives)
-                    usedHunyuan = !alternatives.isEmpty
-                } catch {
-                    searchMessage = "混元暂不可用，回退原生检索"
-                    activity += "\n混元增强检索暂不可用：\(error.localizedDescription)；已自动回退 Apple Music 原生检索。"
-                }
-            }
+            let found = try await runJSONSearch(type: searchType, query: query)
             var combined: [CatalogItem] = []
             var seen = Set<String>()
-            for term in queries.prefix(4) {
-                let found = try await runJSONSearch(type: searchType, query: term)
-                for item in found where seen.insert(item.id).inserted {
-                    combined.append(item)
-                }
+            for item in found where seen.insert(item.id).inserted {
+                combined.append(item)
             }
             results = combined
-            searchMessage = usedHunyuan ? "混元增强 · \(queries.count) 组检索词" : "Apple Music · CN 优先"
+            searchMessage = ""
             if combined.isEmpty { searchMessage = "没有找到结果，试试更短的关键词。" }
         } catch {
             searchMessage = "检索失败"
             activity += "\n检索错误：\(error.localizedDescription)"
         }
-    }
-
-    private func hunyuanQueries(for query: String) async throws -> [String] {
-        guard let url = URL(string: "https://api.hunyuan.cloud.tencent.com/v1/chat/completions") else { return [] }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.timeoutInterval = 35
-        request.setValue("Bearer \(hunyuanKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let prompt = "你是 Apple Music 中文音乐目录检索专家。针对用户输入的音乐关键词，考虑繁简体、中文别名、英文/拼音、唱片系列、艺人名和常见译名，给出最多 3 个最有价值的 Apple Music 搜索短语。不要回答问题，不要编造专辑或歌曲。只返回 JSON 字符串数组，不要 Markdown。原始词：\(query)"
-        let body: [String: Any] = [
-            "model": "hunyuan-turbos-latest",
-            "messages": [
-                ["role": "system", "content": "只输出合法 JSON 数组，最多三项。"],
-                ["role": "user", "content": prompt]
-            ],
-            "temperature": 0.2,
-            "enable_enhancement": true
-        ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-            throw NSError(domain: "Hunyuan", code: 1, userInfo: [NSLocalizedDescriptionKey: "混元服务暂不可用，请检查 API Key 或网络。"])
-        }
-        let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        let choices = root?["choices"] as? [[String: Any]]
-        let message = choices?.first?["message"] as? [String: Any]
-        guard let content = message?["content"] as? String else { return [] }
-        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let start = trimmed.firstIndex(of: "["), let end = trimmed.lastIndex(of: "]"), start <= end {
-            let json = String(trimmed[start...end])
-            if let array = try? JSONDecoder().decode([String].self, from: Data(json.utf8)) {
-                return array.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }.prefix(3).map { $0 }
-            }
-        }
-        return []
     }
 
     private func runJSONSearch(type: String, query: String) async throws -> [CatalogItem] {

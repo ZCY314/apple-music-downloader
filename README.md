@@ -8,7 +8,7 @@ This lightweight macOS native GUI + command-line tool downloads albums, songs, p
 
 ## AMDL Desktop (macOS)
 
-A lightweight native SwiftUI desktop interface with CN-first catalog search, optional Tencent Hunyuan search enhancement, multi-select results, a download queue, and live task activity. Playlist tracks are resolved and filed under their own original albums. See [Desktop documentation](docs/DESKTOP.md).
+A lightweight native SwiftUI desktop interface with CN-first catalog search, multi-select results, a download queue, and live task activity. Playlist tracks are resolved and filed under their own original albums. See [Desktop documentation](docs/DESKTOP.md).
 
 ## Contents
 
