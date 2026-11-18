@@ -52,10 +52,9 @@ jobs:
         run: |
           mkdir -p 'AMDL Desktop.app/Contents/MacOS' 'AMDL Desktop.app/Contents/Resources'
           swiftc -parse-as-library -O -target x86_64-apple-macosx13.0 \
-            -framework SwiftUI -framework AppKit -framework Security \
+            -framework SwiftUI -framework AppKit \
             desktop/AMDLDesktop.swift -o 'AMDL Desktop.app/Contents/MacOS/AMDLDesktop'
           cp /tmp/amdl 'AMDL Desktop.app/Contents/Resources/amdl'
-          cp desktop/resources/AutumnLandscape.jpg 'AMDL Desktop.app/Contents/Resources/AutumnLandscape.jpg'
           cat > 'AMDL Desktop.app/Contents/Info.plist' <<'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -63,7 +62,7 @@ jobs:
           <key>CFBundleExecutable</key><string>AMDLDesktop</string>
           <key>CFBundleIdentifier</key><string>org.zcy314.amdl.desktop</string>
           <key>CFBundleName</key><string>AMDL Desktop</string>
-          <key>CFBundleShortVersionString</key><string>0.1.7</string>
+          <key>CFBundleShortVersionString</key><string>0.1.8</string>
           <key>CFBundlePackageType</key><string>APPL</string>
           <key>LSMinimumSystemVersion</key><string>13.0</string>
           </dict></plist>

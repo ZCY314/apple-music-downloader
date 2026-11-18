@@ -76,11 +76,11 @@ struct MainView: View {
     @State private var searchMessage = ""
     @State private var configPath = NSHomeDirectory() + "/Music/AppleMusic/config.yaml"
 
-    private let ink = Color(hex: 0x292A25)
-    private let paper = Color(hex: 0xF1EBDD)
-    private let muted = Color(hex: 0x77756B)
-    private let accent = Color(hex: 0xA84F3B)
-    private let columns = [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)]
+    private let ink = Color(hex: 0x20211F)
+    private let paper = Color(hex: 0xF6F6F2)
+    private let muted = Color(hex: 0x777A75)
+    private let accent = Color(hex: 0xA85B48)
+    private let columns = [GridItem(.adaptive(minimum: 156, maximum: 220), spacing: 28, alignment: .top)]
 
     private var validPastedLinks: [String] {
         pastedLinks.components(separatedBy: .newlines)
@@ -92,15 +92,8 @@ struct MainView: View {
         HStack(spacing: 0) {
             sidebar
             ZStack {
-                ZStack {
-                    GeometryReader { geometry in
-                        if let image = NSImage(contentsOf: Bundle.main.resourceURL?.appendingPathComponent("AutumnLandscape.jpg") ?? URL(fileURLWithPath: "/nonexistent")) {
-                            Image(nsImage: image).resizable().scaledToFill()
-                                .frame(width: geometry.size.width, height: geometry.size.height)
-                                .clipped().overlay(paper.opacity(0.70))
-                        } else { paper }
-                    }
-                    VStack(spacing: 0) {
+                paper
+                VStack(spacing: 0) {
                     topBar
                     Group {
                         switch page {
@@ -111,11 +104,12 @@ struct MainView: View {
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    }
                 }
             }
         }
         .background(paper)
+        .animation(.easeInOut(duration: 0.18), value: page)
+        .onChange(of: searchType) { _ in results.removeAll(); selectedIDs.removeAll(); searchMessage = "" }
         .onChange(of: queueURLs) { newValue in savedQueue = newValue.joined(separator: "\n") }
         .onChange(of: queueJobs) { newValue in
             if let data = try? JSONEncoder().encode(newValue) { persistedJobs = data.base64EncodedString() }
@@ -144,14 +138,11 @@ struct MainView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 12).fill(accent).frame(width: 38, height: 38)
-                    Image(systemName: "waveform").font(.system(size: 18, weight: .bold)).foregroundStyle(ink)
+                    Image(systemName: "waveform").font(.system(size: 21, weight: .regular)).foregroundStyle(ink)
                 }
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("AMDL").font(.system(size: 17, weight: .black, design: .rounded)).tracking(1.4)
-                }.foregroundStyle(.white)
+                Text("AMDL").font(.system(size: 17, weight: .semibold, design: .default)).tracking(0.8).foregroundStyle(ink)
             }
-            .padding(.horizontal, 22).padding(.top, 34).padding(.bottom, 52)
+            .padding(.horizontal, 24).padding(.top, 34).padding(.bottom, 42)
 
             VStack(spacing: 6) {
                 ForEach(AppPage.allCases, id: \.self) { item in
@@ -162,16 +153,16 @@ struct MainView: View {
                             Image(systemName: item.symbol).font(.system(size: 15, weight: .medium)).frame(width: 20)
                             Text(item.rawValue).font(.system(size: 13, weight: page == item ? .semibold : .medium))
                             Spacer()
-                            if item == .queue && !queueURLs.isEmpty {
-                                Text("\(queueURLs.count)").font(.system(size: 10, weight: .bold, design: .rounded))
-                                    .padding(.horizontal, 7).padding(.vertical, 3)
-                                    .background(accent).foregroundStyle(ink).clipShape(Capsule())
+                            if item == .queue && !queueJobs.isEmpty {
+                                Text("\(queueJobs.filter { $0.status != "完成" }.count)")
+                                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                    .foregroundStyle(muted)
                             }
                         }
-                        .foregroundStyle(page == item ? ink : .white.opacity(0.72))
-                        .padding(.horizontal, 13).frame(height: 43)
-                        .background(page == item ? accent : Color.clear)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .foregroundStyle(page == item ? ink : muted)
+                        .padding(.horizontal, 11).frame(height: 42)
+                        .background(page == item ? Color(hex: 0xE8E9E3) : Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 7))
                     }
                     .buttonStyle(.plain)
                     .padding(.horizontal, 13)
@@ -179,21 +170,22 @@ struct MainView: View {
             }
             Spacer()
         }
-        .frame(width: 218)
-        .background(ink)
+        .frame(width: 194)
+        .background(paper)
+        .overlay(alignment: .trailing) { Rectangle().fill(ink.opacity(0.08)).frame(width: 1) }
     }
 
     private var topBar: some View {
         HStack {
             Text(page.rawValue)
-                .font(.system(size: 25, weight: .medium, design: .serif)).foregroundStyle(ink)
+                .font(.system(size: 23, weight: .semibold, design: .default)).foregroundStyle(ink)
             Spacer()
             if isDownloading {
                 Text(isPaused ? "已暂停" : "正在下载")
                     .font(.system(size: 11, weight: .medium)).foregroundStyle(muted)
             }
         }
-        .padding(.horizontal, 34).padding(.top, 27).padding(.bottom, 24)
+        .padding(.horizontal, 38).padding(.top, 30).padding(.bottom, 22)
         .background(paper)
     }
 
@@ -209,9 +201,8 @@ struct MainView: View {
                         Button { searchText = "" } label: { Image(systemName: "xmark") }.buttonStyle(.plain).foregroundStyle(muted)
                     }
                 }
-                .padding(.horizontal, 16).frame(height: 48)
-                .background(.white).clipShape(RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(ink.opacity(0.07)))
+                .padding(.horizontal, 14).frame(height: 44)
+                .background(Color(hex: 0xECEDE7)).clipShape(RoundedRectangle(cornerRadius: 8))
                 Picker("类型", selection: $searchType) {
                     Text("专辑").tag("album")
                     Text("歌曲").tag("song")
@@ -220,17 +211,16 @@ struct MainView: View {
                     Text("厂牌").tag("record-labels")
                     Text("策展人").tag("curators")
                 }
-                .pickerStyle(.menu).frame(width: 125)
+                .pickerStyle(.menu).frame(width: 112)
                 Button {
                     Task { await searchCatalog() }
                 } label: {
                     HStack(spacing: 8) {
-                        if isSearching { ProgressView().controlSize(.small).tint(ink) }
+                        if isSearching { ProgressView().controlSize(.small).tint(paper) }
                         else { Image(systemName: "arrow.right") }
-                        Text(isSearching ? "检索中" : "搜索")
                     }
-                    .font(.system(size: 12, weight: .bold)).foregroundStyle(ink)
-                    .frame(width: 104, height: 48).background(accent).clipShape(RoundedRectangle(cornerRadius: 12))
+                    .font(.system(size: 12, weight: .medium))
+                    .frame(width: 44, height: 44).background(ink).foregroundStyle(paper).clipShape(RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain).disabled(isSearching || searchText.trimmingCharacters(in: .whitespaces).isEmpty)
             }
@@ -240,8 +230,10 @@ struct MainView: View {
             }
 
             HStack(alignment: .firstTextBaseline) {
-                Text(results.isEmpty ? "探索音乐" : "检索结果")
-                    .font(.system(size: 25, weight: .medium, design: .serif)).foregroundStyle(ink)
+                if !results.isEmpty {
+                    Text("结果")
+                        .font(.system(size: 18, weight: .medium)).foregroundStyle(ink)
+                }
                 Spacer()
                 if !selectedIDs.isEmpty {
                     Button {
@@ -268,18 +260,18 @@ struct MainView: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 34).padding(.bottom, 22)
+        .padding(.horizontal, 38).padding(.bottom, 26)
     }
 
     private var emptyDiscovery: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("搜索音乐")
-                .font(.system(size: 32, weight: .medium, design: .serif)).foregroundStyle(ink)
-            Text("输入专辑、歌曲、艺人或歌单名称。")
+                .font(.system(size: 28, weight: .medium, design: .default)).foregroundStyle(ink)
+            Text("搜索专辑、歌曲、艺人或歌单")
                 .font(.system(size: 12)).foregroundStyle(muted)
         }
-        .frame(maxWidth: .infinity, minHeight: 250, alignment: .leading)
-        .padding(.horizontal, 8)
+        .frame(maxWidth: .infinity, minHeight: 280, alignment: .leading)
+        .padding(.horizontal, 2)
     }
 
     private func resultCard(_ item: CatalogItem) -> some View {
@@ -287,33 +279,53 @@ struct MainView: View {
         return Button {
             if item.type == "record-labels" || item.type == "curators" {
                 if let url = URL(string: item.url) { NSWorkspace.shared.open(url) }
-            } else if selected { selectedIDs.remove(item.id) } else { selectedIDs.insert(item.id) }
+            } else if selected {
+                selectedIDs.remove(item.id)
+            } else {
+                selectedIDs.insert(item.id)
+            }
         } label: {
-            VStack(alignment: .leading, spacing: 9) {
+            VStack(alignment: .leading, spacing: 8) {
                 ZStack(alignment: .topTrailing) {
                     AsyncImage(url: item.imageURL) { image in
                         image.resizable().aspectRatio(contentMode: .fill)
                     } placeholder: {
-                        Rectangle().fill(Color(hex: 0xE3E0D6))
-                            .overlay(Image(systemName: "waveform").font(.system(size: 25)).foregroundStyle(muted.opacity(0.55)))
+                        Rectangle().fill(Color(hex: 0xE8E9E3))
+                            .overlay(Image(systemName: "waveform").font(.system(size: 24, weight: .ultraLight)).foregroundStyle(muted.opacity(0.55)))
                     }
-                    .frame(height: 150).frame(maxWidth: .infinity).clipped()
+                    .aspectRatio(1, contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
                     if selected {
-                        Image(systemName: "checkmark.circle.fill").font(.system(size: 22))
-                            .foregroundStyle(accent).background(ink.clipShape(Circle())).padding(10)
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 23, weight: .regular))
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(paper, accent)
+                            .padding(9)
+                            .transition(.scale.combined(with: .opacity))
                     }
                 }
-                Text(item.name).font(.system(size: 12, weight: .semibold)).foregroundStyle(ink).lineLimit(2).multilineTextAlignment(.leading)
-                Text(item.detail).font(.system(size: 10)).foregroundStyle(muted).lineLimit(2).multilineTextAlignment(.leading)
+                .clipShape(RoundedRectangle(cornerRadius: 3))
+                Text(item.name)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(ink)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(item.detail)
+                    .font(.system(size: 10, weight: .regular))
+                    .foregroundStyle(muted)
+                    .lineLimit(1)
+                    .multilineTextAlignment(.leading)
             }
-            .padding(10).background(selected ? accent.opacity(0.16) : .white.opacity(0.8))
-            .clipShape(RoundedRectangle(cornerRadius: 13))
-            .overlay(RoundedRectangle(cornerRadius: 13).stroke(selected ? ink.opacity(0.45) : ink.opacity(0.06), lineWidth: selected ? 1.2 : 0.7))
+            .contentShape(Rectangle())
+            .opacity(selected ? 0.78 : 1)
         }
         .buttonStyle(.plain)
+        .animation(.easeOut(duration: 0.16), value: selected)
         .contextMenu {
             if item.type != "record-labels" && item.type != "curators" {
-                Button("加入下载队列") { if !queueJobs.contains(where: { $0.url == item.url }) { queueJobs.append(QueueJob(url: item.url, message: item.name)) } }
+                Button("加入队列") { if !queueJobs.contains(where: { $0.url == item.url }) { queueJobs.append(QueueJob(url: item.url, message: item.name)) } }
             }
             Button("在 Apple Music 中打开") { if let url = URL(string: item.url) { NSWorkspace.shared.open(url) } }
         }
@@ -323,9 +335,7 @@ struct MainView: View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("下载清单").font(.system(size: 26, weight: .medium, design: .serif)).foregroundStyle(ink)
-                    Text("专辑、单曲、艺人或 Playlist 链接均可；Playlist 将逐曲解析并归入原专辑。")
-                        .font(.system(size: 11)).foregroundStyle(muted)
+                    Text("下载队列").font(.system(size: 22, weight: .semibold)).foregroundStyle(ink)
                 }
                 Spacer()
                 Button {
@@ -357,7 +367,7 @@ struct MainView: View {
                     Image(systemName: "tray").font(.system(size: 28, weight: .ultraLight)).foregroundStyle(muted)
                     Text("队列是空的").font(.system(size: 13, weight: .medium, design: .serif)).foregroundStyle(ink)
                     Text("从搜索结果添加，或粘贴链接。").font(.system(size: 10)).foregroundStyle(muted)
-                }.frame(maxWidth: .infinity, maxHeight: .infinity).background(.white.opacity(0.42)).clipShape(RoundedRectangle(cornerRadius: 14))
+                }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 HStack {
                     Text("任务").font(.system(size: 17, weight: .medium, design: .serif)).foregroundStyle(ink)
@@ -415,7 +425,7 @@ struct MainView: View {
     private var activityPage: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text("运行日志").font(.system(size: 24, weight: .medium, design: .serif)).foregroundStyle(ink)
+                Text("活动记录").font(.system(size: 22, weight: .semibold)).foregroundStyle(ink)
                 Spacer()
                 Button("清空记录") { activity = "" }.buttonStyle(.plain).foregroundStyle(muted)
                 if isDownloading && !isPaused {
@@ -453,8 +463,7 @@ struct MainView: View {
     private var settingsPage: some View {
         VStack(alignment: .leading, spacing: 22) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("目录与检索").font(.system(size: 20, weight: .medium, design: .serif)).foregroundStyle(ink)
-                Text("中国大陆目录为默认首选；其余地区用于补充匹配。").font(.system(size: 11)).foregroundStyle(muted)
+                Text("音乐目录").font(.system(size: 20, weight: .semibold)).foregroundStyle(ink)
             }
             HStack {
                 VStack(alignment: .leading, spacing: 5) {

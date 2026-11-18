@@ -83,3 +83,9 @@ Playlist entries are handled as individual songs, not as tracks belonging to one
 - Removed the Tencent Hunyuan integration and its API-key settings. Search now queries the Apple Music catalog directly.
 - Simplified navigation, page headings and the discovery empty state; removed promotional labels, slogans and decorative feature callouts.
 - Kept the controls that directly support finding, organizing and downloading music.
+
+## Desktop 0.1.8
+
+- Reworked the interface around a quiet typographic grid, adaptive artwork layout and direct selection.
+- Removed artwork cards, decorative borders and the painted workspace background so album art can lead.
+- Simplified navigation and search-to-queue transitions; queue counts now reflect actual queued jobs.
