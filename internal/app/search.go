@@ -155,6 +155,28 @@ func searchItems(resp *ampapi.SearchResp, searchType string) []SearchResultItem 
 				items = append(items, SearchResultItem{Type: "Song", Name: item.Attributes.Name, Detail: detail, URL: item.Attributes.URL, ID: item.ID, Artwork: item.Attributes.Artwork.URL})
 			}
 		}
+	case "playlist", "record-labels", "curators":
+		var collection *ampapi.GenericResults
+		switch searchType {
+		case "playlist":
+			collection = resp.Results.Playlists
+		case "record-labels":
+			collection = resp.Results.RecordLabels
+		case "curators":
+			collection = resp.Results.Curators
+		}
+		if collection != nil {
+			for _, item := range collection.Data {
+				detail := item.Attributes.ArtistName
+				if detail == "" {
+					detail = item.Attributes.CuratorName
+				}
+				if detail == "" && item.Attributes.TrackCount > 0 {
+					detail = fmt.Sprintf("%d tracks", item.Attributes.TrackCount)
+				}
+				items = append(items, SearchResultItem{Type: item.Type, Name: item.Attributes.Name, Detail: detail, URL: item.Attributes.URL, ID: item.ID, Artwork: item.Attributes.Artwork.URL})
+			}
+		}
 	case "artist":
 		if resp.Results.Artists != nil {
 			for _, item := range resp.Results.Artists.Data {
@@ -174,6 +196,12 @@ func searchHasNext(resp *ampapi.SearchResp, searchType string) bool {
 		return resp.Results.Songs != nil && resp.Results.Songs.Next != ""
 	case "artist":
 		return resp.Results.Artists != nil && resp.Results.Artists.Next != ""
+	case "playlist":
+		return resp.Results.Playlists != nil && resp.Results.Playlists.Next != ""
+	case "record-labels":
+		return resp.Results.RecordLabels != nil && resp.Results.RecordLabels.Next != ""
+	case "curators":
+		return resp.Results.Curators != nil && resp.Results.Curators.Next != ""
 	}
 	return false
 }
@@ -184,6 +212,12 @@ func searchStorefronts(primary, searchType string) []string {
 		primary = "cn"
 	}
 	storefronts := []string{primary}
+	if searchType == "playlist" {
+		return []string{"tw", "hk", "us"}
+	}
+	if searchType == "record-labels" || searchType == "curators" {
+		return []string{"cn", "hk", "tw", "us"}
+	}
 	if searchType == "album" {
 		// Keep CN in the catalogue fallback set even when a user changes the
 		// preferred storefront; CN remains first by default.
@@ -196,8 +230,22 @@ func searchStorefronts(primary, searchType string) []string {
 	return storefronts
 }
 
+func searchAPITypes(searchType string) string {
+	switch searchType {
+	case "record-labels":
+		return "record-labels"
+	case "curators":
+		return "curators"
+	default:
+		return searchType + "s"
+	}
+}
+
 func (r *Runner) fetchSearchResults(searchType, query, token string) ([]SearchResultItem, error) {
 	queries := buildSearchQueries(query)
+	if (searchType == "playlist" || searchType == "record-labels" || searchType == "curators") && len(queries) > 2 {
+		queries = queries[:2]
+	}
 	storefronts := searchStorefronts(r.Config.General.Storefront, searchType)
 	var results []SearchResultItem
 	var firstErr error
@@ -205,7 +253,7 @@ func (r *Runner) fetchSearchResults(searchType, query, token string) ([]SearchRe
 	fetch := func(storefront, searchQuery string) {
 		fmt.Fprintf(os.Stderr, "Searching %s for %q\n", strings.ToUpper(storefront), searchQuery)
 		for page := 0; page < searchMaxPages; page++ {
-			resp, err := ampapi.Search(storefront, searchQuery, searchType+"s", r.Config.General.Language, token, searchPageSize, page*searchPageSize)
+			resp, err := ampapi.Search(storefront, searchQuery, searchAPITypes(searchType), r.Config.General.Language, token, searchPageSize, page*searchPageSize)
 			if err != nil {
 				if firstErr == nil {
 					firstErr = err
@@ -230,7 +278,9 @@ func (r *Runner) fetchSearchResults(searchType, query, token string) ([]SearchRe
 	// Then broaden recall with word-order, token and CJK-fragment variants in
 	// the configured storefront, avoiding an excessive cross-region query fanout.
 	for _, searchQuery := range queries[1:] {
-		fetch(storefronts[0], searchQuery)
+		for _, storefront := range storefronts {
+			fetch(storefront, searchQuery)
+		}
 	}
 	if len(results) == 0 && firstErr != nil {
 		return nil, fmt.Errorf("all catalog search attempts failed: %w", firstErr)
@@ -240,8 +290,8 @@ func (r *Runner) fetchSearchResults(searchType, query, token string) ([]SearchRe
 
 func (r *Runner) handleSearch(searchType string, queryParts []string, token string) ([]string, error) {
 	query := strings.Join(queryParts, " ")
-	if searchType != "album" && searchType != "song" && searchType != "artist" {
-		return nil, fmt.Errorf("invalid search type: %s. Use 'album', 'song', or 'artist'", searchType)
+	if searchType != "album" && searchType != "song" && searchType != "artist" && searchType != "playlist" && searchType != "record-labels" && searchType != "curators" {
+		return nil, fmt.Errorf("invalid search type: %s. Use album, song, artist, playlist, record-labels, or curators", searchType)
 	}
 	fmt.Printf("Searching for %ss: %q in storefront %q\n", searchType, query, r.Config.General.Storefront)
 	items, err := r.fetchSearchResults(searchType, query, token)

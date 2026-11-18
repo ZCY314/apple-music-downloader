@@ -71,3 +71,10 @@ Playlist entries are handled as individual songs, not as tracks belonging to one
 - CN-first Apple Music catalog search with HK/TW/SG/US fallbacks and deduplicated results.
 - Optional Tencent Hunyuan search enhancement proposes alternate catalog query phrases; Apple Music remains the source of truth.
 - Playlist tracks are resolved individually and saved with their original album metadata and artwork.
+
+## Desktop 0.1.6
+
+- Search supports Apple Music playlists, record labels and curators in addition to albums, songs and artists.
+- Playlist discovery merges TW, HK and US catalogues; playlist tracks are resolved against CN by shared catalog ID first, then exact title/artist search, with source-storefront fallback when CN has no exact match.
+- The native macOS queue persists individual jobs and history, supports pause/resume, retry per failed item, retry all failed items and removal of queued jobs.
+- The supplied Qing Hongwu autumn landscape artwork is bundled as a low-contrast ambient interface background.

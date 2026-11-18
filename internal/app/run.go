@@ -25,7 +25,7 @@ func Main() {
 		search_type string
 	)
 	pflag.StringVarP(&configFile, "config", "c", "", "Path to custom config file (default: config.yaml)")
-	pflag.StringVar(&search_type, "search", "", "Search for 'album', 'song', or 'artist'. Provide query after flags.")
+	pflag.StringVar(&search_type, "search", "", "Search album, song, artist, playlist, record-labels, or curators")
 	pflag.BoolVar(&r.Flags.Atmos, "atmos", false, "Enable atmos download mode")
 	pflag.BoolVar(&r.Flags.AAC, "aac", false, "Enable adm-aac download mode")
 	pflag.BoolVar(&r.Flags.Select, "select", false, "Enable selective download")
@@ -52,7 +52,7 @@ func Main() {
 	pflag.Usage = func() {
 		prog := progName()
 		fmt.Fprintf(os.Stderr, "Usage: %s [options] [url1 url2 ...]\n", prog)
-		fmt.Fprintf(os.Stderr, "Search Usage: %s --search [album|song|artist] [query] [--select]\n", prog)
+		fmt.Fprintf(os.Stderr, "Search Usage: %s --search [album|song|artist|playlist|record-labels|curators] [query] [--select]\n", prog)
 		fmt.Println("\nOptions:")
 		pflag.PrintDefaults()
 	}
@@ -136,7 +136,7 @@ func Main() {
 	args := pflag.Args()
 	if r.Flags.JSONSearch {
 		if search_type == "" || len(args) == 0 {
-			fmt.Fprintln(os.Stderr, "--json-search requires --search album|song|artist and a query")
+			fmt.Fprintln(os.Stderr, "--json-search requires --search TYPE and a query")
 			os.Exit(2)
 		}
 		items, searchErr := r.fetchSearchResults(search_type, strings.Join(args, " "), token)

@@ -17,9 +17,12 @@ type SearchResp struct {
 
 // SearchResults contains the different types of search results.
 type SearchResults struct {
-	Songs   *SongResults   `json:"songs,omitempty"`
-	Albums  *AlbumResults  `json:"albums,omitempty"`
-	Artists *ArtistResults `json:"artists,omitempty"`
+	Songs        *SongResults    `json:"songs,omitempty"`
+	Albums       *AlbumResults   `json:"albums,omitempty"`
+	Artists      *ArtistResults  `json:"artists,omitempty"`
+	Playlists    *GenericResults `json:"playlists,omitempty"`
+	RecordLabels *GenericResults `json:"record-labels,omitempty"`
+	Curators     *GenericResults `json:"curators,omitempty"`
 }
 
 // SongResults contains a list of song search results.
@@ -50,6 +53,27 @@ type ArtistResults struct {
 			URL        string   `json:"url"`
 		} `json:"attributes"`
 	} `json:"data"`
+}
+
+// GenericResults covers Apple Music catalog result types with common attributes.
+type GenericResults struct {
+	Href string              `json:"href"`
+	Next string              `json:"next"`
+	Data []GenericResultData `json:"data"`
+}
+type GenericResultData struct {
+	ID         string `json:"id"`
+	Type       string `json:"type"`
+	Attributes struct {
+		Name        string `json:"name"`
+		URL         string `json:"url"`
+		ArtistName  string `json:"artistName"`
+		CuratorName string `json:"curatorName"`
+		TrackCount  int    `json:"trackCount"`
+		Artwork     struct {
+			URL string `json:"url"`
+		} `json:"artwork"`
+	} `json:"attributes"`
 }
 
 // Search performs a search query against the Apple Music API.

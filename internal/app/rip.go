@@ -826,7 +826,8 @@ func (r *Runner) ripPlaylist(playlistId string, token string, storefront string,
 		}
 		track := tracks[index-1]
 		fmt.Printf("\nPlaylist track %d/%d: %s — %s\n", index, len(tracks), track.Attributes.Name, track.Attributes.ArtistName)
-		if err := r.ripSong(track.ID, token, storefront, mediaUserToken); err != nil {
+		downloadID, downloadStorefront := r.resolvePlaylistTrackCN(track, token, storefront)
+		if err := r.ripSong(downloadID, token, downloadStorefront, mediaUserToken); err != nil {
 			fmt.Printf("Failed to download playlist track %q: %v\n", track.Attributes.Name, err)
 			if firstErr == nil {
 				firstErr = err
@@ -834,6 +835,26 @@ func (r *Runner) ripPlaylist(playlistId string, token string, storefront string,
 		}
 	}
 	return firstErr
+}
+
+// resolvePlaylistTrackCN prefers the mainland catalog for playlist downloads.
+// Regional playlist IDs are not always present in CN, so title/artist matching
+// locates the corresponding mainland song before falling back to the source ID.
+func (r *Runner) resolvePlaylistTrackCN(track ampapi.TrackRespData, token, sourceStorefront string) (string, string) {
+	term := strings.TrimSpace(track.Attributes.Name + " " + track.Attributes.ArtistName)
+	resp, err := ampapi.Search("cn", term, "songs", r.Config.General.Language, token, 25, 0)
+	if err == nil && resp.Results.Songs != nil {
+		normalize := func(v string) string { return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(v)), " ")) }
+		wantName, wantArtist := normalize(track.Attributes.Name), normalize(track.Attributes.ArtistName)
+		for _, candidate := range resp.Results.Songs.Data {
+			if normalize(candidate.Attributes.Name) == wantName && normalize(candidate.Attributes.ArtistName) == wantArtist {
+				fmt.Printf("CN catalog match: %s — %s [%s]\n", candidate.Attributes.Name, candidate.Attributes.ArtistName, candidate.ID)
+				return candidate.ID, "cn"
+			}
+		}
+	}
+	fmt.Printf("CN catalog has no exact match for %q — %q; falling back to playlist storefront %s\n", track.Attributes.Name, track.Attributes.ArtistName, strings.ToUpper(sourceStorefront))
+	return track.ID, sourceStorefront
 }
 
 func (r *Runner) ripSong(songId string, token string, storefront string, mediaUserToken string) error {
