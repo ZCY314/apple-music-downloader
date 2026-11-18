@@ -17,6 +17,9 @@
 - [使用方法](#使用方法)
 - [升级](#升级)
 - [开发者指南](#开发者指南)
+- [功能文档](./docs/FEATURES.md)
+- [贡献指南](./CONTRIBUTING.md)
+- [开发与维护](./docs/DEVELOPMENT.md)
 - [获取 media-user-token](#获取-media-user-token)
 - [歌词设置](#歌词设置)
 - [致谢](#致谢)
@@ -497,6 +500,10 @@ go build -o amdl.exe .
 版本发布由 `VERSION` 文件驱动：推送到 `main` 时，如果 `v<VERSION>` 这个 tag 还不存在，Release 工作流会构建所有平台的二进制并以该 tag 发布 GitHub Release。发版只需修改 `VERSION`（如 `0.1.0` → `0.1.1`）并合并到 `main`。带后缀的版本（如 `0.2.0-beta.1`）会作为预发布版本发布。
 
 Release 二进制会从构建它的仓库自升级，因此 fork 发布的版本会从 fork 获取更新。
+
+## 项目维护
+
+本 Fork 由 [ZCY314/apple-music-downloader](https://github.com/ZCY314/apple-music-downloader) 维护。功能细节见[功能文档](./docs/FEATURES.md)，开发、测试与发布流程见[开发与维护](./docs/DEVELOPMENT.md)，欢迎按[贡献指南](./CONTRIBUTING.md)提交改进。
 
 ## 致谢
 
